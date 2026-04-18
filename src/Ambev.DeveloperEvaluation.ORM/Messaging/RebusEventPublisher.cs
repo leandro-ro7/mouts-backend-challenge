@@ -16,13 +16,12 @@ public class RebusEventPublisher : IEventPublisher
         _logger = logger;
     }
 
-    public async Task PublishAsync<T>(T domainEvent, CancellationToken cancellationToken = default)
-        where T : IDomainEvent
+    public async Task PublishAsync(IDomainEvent domainEvent, CancellationToken cancellationToken = default)
     {
         await _bus.Publish(domainEvent);
         _logger.LogInformation(
             "Domain event published: {EventType} at {OccurredAt}",
-            typeof(T).Name,
+            domainEvent.GetType().Name,
             domainEvent.OccurredAt);
     }
 }

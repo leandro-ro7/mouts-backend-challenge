@@ -50,7 +50,7 @@ public class CreateSaleHandlerTests
 
         await _handler.Handle(command, CancellationToken.None);
 
-        capturedSale!.Items[0].Discount.Should().Be(0.10m);
+        capturedSale!.Items[0].Discount.Value.Should().Be(0.10m);
     }
 
     [Fact(DisplayName = "Given item with qty=10 When creating Then 20% discount is applied")]
@@ -65,6 +65,6 @@ public class CreateSaleHandlerTests
 
         await _handler.Handle(command, CancellationToken.None);
 
-        capturedSale!.Items[0].Discount.Should().Be(0.20m);
+        capturedSale!.Items[0].Discount.Value.Should().Be(0.20m);
     }
 }

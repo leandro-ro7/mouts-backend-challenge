@@ -74,19 +74,26 @@ public class CreateUserHandlerTests
     }
 
     /// <summary>
-    /// Tests that an invalid user creation request throws a validation exception.
+    /// Validates that a duplicate email causes InvalidOperationException.
+    /// Note: structural validation (empty fields, format) is the pipeline's responsibility
+    /// via ValidationBehavior — not the handler's. Only business rule violations belong here.
     /// </summary>
-    [Fact(DisplayName = "Given invalid user data When creating user Then throws validation exception")]
-    public async Task Handle_InvalidRequest_ThrowsValidationException()
+    [Fact(DisplayName = "Given duplicate email When creating user Then throws InvalidOperationException")]
+    public async Task Handle_DuplicateEmail_ThrowsInvalidOperationException()
     {
         // Given
-        var command = new CreateUserCommand(); // Empty command will fail validation
+        var command = CreateUserHandlerTestData.GenerateValidCommand();
+        var existing = new User { Id = Guid.NewGuid(), Email = command.Email };
+
+        _userRepository.GetByEmailAsync(command.Email, Arg.Any<CancellationToken>())
+            .Returns(existing);
 
         // When
         var act = () => _handler.Handle(command, CancellationToken.None);
 
         // Then
-        await act.Should().ThrowAsync<FluentValidation.ValidationException>();
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage($"*{command.Email}*");
     }
 
     /// <summary>

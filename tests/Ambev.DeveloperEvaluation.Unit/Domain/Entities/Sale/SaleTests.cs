@@ -29,7 +29,7 @@ public class SaleTests
     {
         // qty=10 → 20% discount → total = 10 * 10 * 0.80 = 80
         var sale = SaleTestData.CreateSaleWithItem(10, 10m);
-        sale.Items[0].Discount.Should().Be(0.20m);
+        sale.Items[0].Discount.Value.Should().Be(0.20m);
         sale.TotalAmount.Should().Be(80m);
     }
 

@@ -1,4 +1,4 @@
-using Ambev.DeveloperEvaluation.Application.Sales.CreateSale;
+using Ambev.DeveloperEvaluation.Application.Sales.GetSale;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
 using AutoMapper;
 using MediatR;
@@ -21,14 +21,12 @@ public class ListSalesHandler : IRequestHandler<ListSalesQuery, ListSalesResult>
         var (items, totalCount) = await _repository.ListAsync(
             query.Page, query.Size, query.Order, cancellationToken);
 
-        var totalPages = (int)Math.Ceiling(totalCount / (double)query.Size);
-
         return new ListSalesResult
         {
-            Data = _mapper.Map<IEnumerable<CreateSaleResult>>(items),
+            Data = _mapper.Map<IEnumerable<GetSaleResult>>(items),
             TotalItems = totalCount,
             CurrentPage = query.Page,
-            TotalPages = totalPages
+            TotalPages = (int)Math.Ceiling(totalCount / (double)query.Size)
         };
     }
 }

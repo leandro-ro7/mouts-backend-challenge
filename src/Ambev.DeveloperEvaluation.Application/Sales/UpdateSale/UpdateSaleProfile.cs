@@ -1,4 +1,3 @@
-using Ambev.DeveloperEvaluation.Application.Sales.CreateSale;
 using Ambev.DeveloperEvaluation.Domain.Entities;
 using AutoMapper;
 
@@ -9,6 +8,5 @@ public class UpdateSaleProfile : Profile
     public UpdateSaleProfile()
     {
         CreateMap<Sale, UpdateSaleResult>();
-        CreateMap<SaleItem, SaleItemResult>();
     }
 }

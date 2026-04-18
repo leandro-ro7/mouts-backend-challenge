@@ -4,6 +4,7 @@ using Ambev.DeveloperEvaluation.Domain.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Reflection;
 
 namespace Ambev.DeveloperEvaluation.ORM;
@@ -11,15 +12,20 @@ namespace Ambev.DeveloperEvaluation.ORM;
 public class DefaultContext : DbContext
 {
     private readonly IEventPublisher? _eventPublisher;
+    private readonly ILogger<DefaultContext>? _logger;
 
     public DbSet<User> Users { get; set; }
     public DbSet<Sale> Sales { get; set; }
     public DbSet<SaleItem> SaleItems { get; set; }
 
-    public DefaultContext(DbContextOptions<DefaultContext> options, IEventPublisher? eventPublisher = null)
+    public DefaultContext(
+        DbContextOptions<DefaultContext> options,
+        IEventPublisher? eventPublisher = null,
+        ILogger<DefaultContext>? logger = null)
         : base(options)
     {
         _eventPublisher = eventPublisher;
+        _logger = logger;
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -31,24 +37,34 @@ public class DefaultContext : DbContext
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         // Collect events before clearing them from entities
-        var events = ChangeTracker.Entries<BaseEntity>()
+        var events = ChangeTracker.Entries<AggregateRoot>()
             .SelectMany(e => e.Entity.DomainEvents)
             .ToList();
 
-        foreach (var entry in ChangeTracker.Entries<BaseEntity>())
+        foreach (var entry in ChangeTracker.Entries<AggregateRoot>())
             entry.Entity.ClearDomainEvents();
 
         var result = await base.SaveChangesAsync(cancellationToken);
 
-        // Dispatch only after successful persistence
         if (_eventPublisher is not null)
             foreach (var domainEvent in events)
-                await _eventPublisher.PublishAsync((dynamic)domainEvent, cancellationToken);
+                try
+                {
+                    await _eventPublisher.PublishAsync(domainEvent, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    // Data is already committed — log and continue. A dead-letter/outbox
+                    // pattern would be needed for at-least-once delivery guarantees.
+                    _logger?.LogError(ex,
+                        "Failed to publish domain event {EventType}. Data was committed.",
+                        domainEvent.GetType().Name);
+                }
 
         return result;
     }
 }
-public class YourDbContextFactory : IDesignTimeDbContextFactory<DefaultContext>
+public class DefaultContextFactory : IDesignTimeDbContextFactory<DefaultContext>
 {
     public DefaultContext CreateDbContext(string[] args)
     {

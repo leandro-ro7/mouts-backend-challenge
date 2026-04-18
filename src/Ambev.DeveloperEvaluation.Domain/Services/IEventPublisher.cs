@@ -4,5 +4,5 @@ namespace Ambev.DeveloperEvaluation.Domain.Services;
 
 public interface IEventPublisher
 {
-    Task PublishAsync<T>(T domainEvent, CancellationToken cancellationToken = default) where T : IDomainEvent;
+    Task PublishAsync(IDomainEvent domainEvent, CancellationToken cancellationToken = default);
 }

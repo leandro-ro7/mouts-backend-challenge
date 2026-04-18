@@ -7,7 +7,8 @@
       "Bash(rm -f c:/mouts/mouts-backend-challenge/src/coverage-report*)",
       "Bash(dotnet restore *)",
       "Bash(dotnet search *)",
-      "Bash(nuget search *)"
+      "Bash(nuget search *)",
+      "Bash(dotnet add *)"
     ]
   }
 }

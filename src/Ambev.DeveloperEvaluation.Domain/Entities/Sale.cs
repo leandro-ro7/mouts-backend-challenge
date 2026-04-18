@@ -1,10 +1,11 @@
 using Ambev.DeveloperEvaluation.Domain.Common;
 using Ambev.DeveloperEvaluation.Domain.Events;
 using Ambev.DeveloperEvaluation.Domain.Exceptions;
+using Ambev.DeveloperEvaluation.Domain.ValueObjects;
 
 namespace Ambev.DeveloperEvaluation.Domain.Entities;
 
-public class Sale : BaseEntity
+public class Sale : AggregateRoot
 {
     // Generated server-side — never accepted as client input
     public string SaleNumber { get; private set; } = string.Empty;
@@ -123,6 +124,23 @@ public class Sale : BaseEntity
         UpdatedAt = DateTime.UtcNow;
 
         RaiseDomainEvent(new SaleModifiedEvent(Id, SaleNumber));
+    }
+
+    public void ReplaceItems(IEnumerable<NewSaleItemSpec> newItems)
+    {
+        if (IsCancelled)
+            throw new DomainException("Cannot update items of a cancelled sale.");
+
+        // Soft-cancel existing active items directly (bypasses CancelItem to avoid ItemCancelledEvent —
+        // this is a replace operation, not a business cancellation of individual items)
+        foreach (var item in _items.Where(i => !i.IsCancelled))
+            item.Cancel();
+
+        foreach (var spec in newItems)
+            _items.Add(new SaleItem(Id, spec.ProductId, spec.ProductName, spec.Quantity, spec.UnitPrice));
+
+        RecalculateTotal();
+        UpdatedAt = DateTime.UtcNow;
     }
 
     private void RecalculateTotal()

@@ -51,7 +51,16 @@ public class SaleItemConfiguration : IEntityTypeConfiguration<SaleItem>
 
         builder.Property(i => i.Quantity).IsRequired();
         builder.Property(i => i.UnitPrice).IsRequired().HasColumnType("numeric(18,2)");
-        builder.Property(i => i.Discount).IsRequired().HasColumnType("numeric(5,4)");
+
+        // DiscountRate is an owned Value Object — stored in the same "Discount" column, no schema change
+        builder.OwnsOne(i => i.Discount, d =>
+        {
+            d.Property(x => x.Value)
+                .HasColumnName("Discount")
+                .HasColumnType("numeric(5,4)")
+                .IsRequired();
+        });
+
         builder.Property(i => i.TotalAmount).IsRequired().HasColumnType("numeric(18,2)");
         builder.Property(i => i.IsCancelled).IsRequired().HasDefaultValue(false);
     }

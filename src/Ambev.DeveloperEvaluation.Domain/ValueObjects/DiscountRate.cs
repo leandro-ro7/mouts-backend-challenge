@@ -1,0 +1,48 @@
+using Ambev.DeveloperEvaluation.Domain.Exceptions;
+
+namespace Ambev.DeveloperEvaluation.Domain.ValueObjects;
+
+/// <summary>
+/// Value Object representing a quantity-based discount rate.
+/// Immutable, equality by value, encapsulates all discount tier logic.
+/// </summary>
+public sealed class DiscountRate : IEquatable<DiscountRate>
+{
+    public decimal Value { get; private set; }
+
+    // Required by EF Core owned entity
+    private DiscountRate() { }
+
+    private DiscountRate(decimal value) => Value = value;
+
+    public static readonly DiscountRate None = new(0m);
+    public static readonly DiscountRate TenPercent = new(0.10m);
+    public static readonly DiscountRate TwentyPercent = new(0.20m);
+
+    /// <summary>
+    /// Returns the applicable discount rate for a given quantity.
+    /// Decision: "4+" in requirements summary prevails over "above 4" in narrative.
+    /// - qty 1-3:   0%  (below threshold — no discount)
+    /// - qty 4-9:  10%  (inclusive lower bound per summary)
+    /// - qty 10-20: 20% (both bounds inclusive)
+    /// - qty > 20: DomainException (business restriction)
+    /// </summary>
+    public static DiscountRate For(int quantity)
+    {
+        if (quantity > 20)
+            throw new DomainException($"Cannot sell more than 20 identical items. Requested: {quantity}.");
+        if (quantity >= 10) return TwentyPercent;
+        if (quantity >= 4)  return TenPercent;
+        return None;
+    }
+
+    /// <summary>Applies the discount to an amount and rounds to 2 decimal places.</summary>
+    public decimal Apply(decimal amount) => Math.Round(amount * (1 - Value), 2);
+
+    public bool Equals(DiscountRate? other) => other is not null && Value == other.Value;
+    public override bool Equals(object? obj) => obj is DiscountRate d && Equals(d);
+    public override int GetHashCode() => Value.GetHashCode();
+    public override string ToString() => $"{Value:P0}";
+
+    public static implicit operator decimal(DiscountRate rate) => rate.Value;
+}

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp -r c:/mouts/mouts-backend-challenge/src/src/* c:/mouts/mouts-backend-challenge/src/)",
+      "Bash(cp -r c:/mouts/mouts-backend-challenge/src/tests c:/mouts/mouts-backend-challenge/)",
+      "Bash(rm -f c:/mouts/mouts-backend-challenge/src/docker-compose*)",
+      "Bash(rm -f c:/mouts/mouts-backend-challenge/src/coverage-report*)",
+      "Bash(dotnet restore *)",
+      "Bash(dotnet search *)",
+      "Bash(nuget search *)"
+    ]
+  }
+}

@@ -80,6 +80,17 @@ Substituiu a cadeia de `catch` por `Dictionary<Type, (Status, Code, LogLevel, Fu
 **`IOutboxContext` para desacoplamento**  
 `OutboxInterceptor` depende de `IOutboxContext` (`GetTrackedAggregates()`, `AddOutboxMessage()`), não de `DefaultContext` diretamente. Qualquer `DbContext` que implemente a interface pode ser suportado sem alterar o interceptor.
 
+**Rotas de Auth e Users não seguem o padrão `/api/v1/`**  
+O `general-api.md` especifica que todos os endpoints devem ser servidos sob `/api/v1/` e que o login deve ser obtido via `POST /api/v1/auth/login`. Na prática:
+
+- `AuthController` usa `[Route("api/[controller]")]` → rota efetiva é `POST /api/auth` (sem versão, sem sufixo `/login`)
+- `UsersController` usa `[Route("api/[controller]")]` → rota efetiva é `/api/users` (sem versão)
+
+Esses dois controllers fazem parte da base pré-existente do desafio e não foram modificados. O `SalesController` — implementação nova — está corretamente versionado sob `/api/v{version:apiVersion}/sales`. A divergência nos controllers herdados é conhecida e está fora do escopo das alterações realizadas.
+
+**Campo `error` vs `detail` na resposta de erro de validação**  
+O `general-api.md` especifica que, para erros de validação, `error` deve conter um sumário genérico (`"One or more validation errors occurred."`) e `detail` deve conter o detalhe específico do campo. A implementação atual do `ValidationExceptionMiddleware` atribui o mesmo valor (a lista de erros do FluentValidation) a ambos os campos, pois `WriteResponse` recebe `(error, detail)` com o mesmo argumento. Esta é uma divergência menor em relação ao contrato documentado — o conteúdo está correto, apenas a segregação sumário/detalhe não é respeitada.
+
 **`ItemAddedEvent` e `ItemModifiedEvent` não foram implementados**  
 O overview de referência lista esses dois eventos, porém a operação `PUT /sales/{id}` foi modelada como **substituição atômica** do agregado (replace completo de header + itens), não como edição granular de itens individuais. Nesse modelo:
 

@@ -1,5 +1,6 @@
 using Ambev.DeveloperEvaluation.Domain.Entities;
 using Ambev.DeveloperEvaluation.Domain.Exceptions;
+using Ambev.DeveloperEvaluation.Domain.Repositories;
 using Ambev.DeveloperEvaluation.Domain.ValueObjects;
 using Ambev.DeveloperEvaluation.Integration.Infrastructure;
 using Ambev.DeveloperEvaluation.ORM.Repositories;
@@ -48,7 +49,7 @@ public class SaleRepositoryPostgresTests
         await repo.CreateAsync(BuildSale("acme logistics"),   CancellationToken.None);
         await repo.CreateAsync(BuildSale("Unrelated Buyer"),  CancellationToken.None);
 
-        var (items, total) = await repo.ListAsync(1, 10, customerName: "acme");
+        var (items, total) = await repo.ListAsync(new SaleListCriteria(CustomerName: "acme"));
 
         total.Should().Be(2);
         items.Should().OnlyContain(s => s.CustomerName.Contains("acme", StringComparison.OrdinalIgnoreCase));
@@ -64,7 +65,7 @@ public class SaleRepositoryPostgresTests
         await repo.CreateAsync(BuildSale("Southern Goods"),        CancellationToken.None);
         await repo.CreateAsync(BuildSale("Eastern Exports"),       CancellationToken.None);
 
-        var (items, total) = await repo.ListAsync(1, 10, customerName: "ern");
+        var (items, total) = await repo.ListAsync(new SaleListCriteria(CustomerName: "ern"));
 
         total.Should().BeGreaterThanOrEqualTo(3, "all three contain 'ern'");
     }
@@ -163,9 +164,9 @@ public class SaleRepositoryPostgresTests
         for (var i = 0; i < 5; i++)
             await repo.CreateAsync(BuildSale($"{prefix} Customer {i}"), CancellationToken.None);
 
-        var (page1, total) = await repo.ListAsync(1, 2, customerName: prefix);
-        var (page2, _)     = await repo.ListAsync(2, 2, customerName: prefix);
-        var (page3, _)     = await repo.ListAsync(3, 2, customerName: prefix);
+        var (page1, total) = await repo.ListAsync(new SaleListCriteria(Page: 1, Size: 2, CustomerName: prefix));
+        var (page2, _)     = await repo.ListAsync(new SaleListCriteria(Page: 2, Size: 2, CustomerName: prefix));
+        var (page3, _)     = await repo.ListAsync(new SaleListCriteria(Page: 3, Size: 2, CustomerName: prefix));
 
         total.Should().Be(5);
         page1.Should().HaveCount(2);
@@ -184,7 +185,7 @@ public class SaleRepositoryPostgresTests
         await Task.Delay(10); // ensure distinct timestamps
         await repo.CreateAsync(BuildSale($"{prefix} Recent"), CancellationToken.None);
 
-        var (items, _) = await repo.ListAsync(1, 10, order: "saleDate desc", customerName: prefix);
+        var (items, _) = await repo.ListAsync(new SaleListCriteria(Order: "saleDate desc", CustomerName: prefix));
 
         items.First().CustomerName.Should().Contain("Recent");
     }

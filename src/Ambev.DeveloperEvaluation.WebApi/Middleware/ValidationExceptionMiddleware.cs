@@ -74,9 +74,12 @@ public class ValidationExceptionMiddleware
             _logger.LogError(ex, "Unhandled exception for {Path}", context.Request.Path);
 
             await WriteResponse(context, 500, "InternalError",
-                "An unexpected error occurred.", ex.Message);
+                "An unexpected error occurred.", "An unexpected error occurred.");
         }
     }
+
+    private static readonly JsonSerializerOptions JsonOptions =
+        new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     private static Task WriteResponse(HttpContext context, int status, string type, string error, string detail)
     {
@@ -85,7 +88,7 @@ public class ValidationExceptionMiddleware
 
         var body = JsonSerializer.Serialize(
             new { type, error, detail, traceId = context.TraceIdentifier },
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            JsonOptions);
 
         return context.Response.WriteAsync(body);
     }

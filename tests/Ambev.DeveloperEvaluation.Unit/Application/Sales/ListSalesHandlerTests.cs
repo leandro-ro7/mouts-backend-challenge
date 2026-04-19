@@ -32,8 +32,7 @@ public class ListSalesHandlerTests
     // Helper: match any call to ListAsync regardless of filter args
     private void SetupListAsync(IEnumerable<Sale> sales, int total) =>
         _repository.ListAsync(
-            Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(),
-            Arg.Any<string?>(), Arg.Any<DateTime?>(), Arg.Any<DateTime?>(), Arg.Any<bool?>(),
+            Arg.Any<SaleListCriteria>(),
             Arg.Any<CancellationToken>())
             .Returns((sales, total));
 
@@ -125,8 +124,10 @@ public class ListSalesHandlerTests
         await _handler.Handle(query, CancellationToken.None);
 
         await _repository.Received(1).ListAsync(
-            1, 5, "saleDate desc",
-            "Acme", from, to, false,
+            Arg.Is<SaleListCriteria>(c =>
+                c.Page == 1 && c.Size == 5 && c.Order == "saleDate desc" &&
+                c.CustomerName == "Acme" && c.DateFrom == from && c.DateTo == to &&
+                c.IsCancelled == false),
             Arg.Any<CancellationToken>());
     }
 }

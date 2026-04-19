@@ -219,7 +219,7 @@ public class SaleTests
             "the one active old item must raise ItemCancelledEvent");
     }
 
-    [Fact(DisplayName = "SaleModifiedEvent carries correct PreviousTotalAmount and NewTotalAmount")]
+    [Fact(DisplayName = "SaleModifiedEvent carries correct Previous.TotalAmount and Current.TotalAmount")]
     public void UpdateFull_SaleModifiedEvent_CarriesFinancialDelta()
     {
         // Old item: qty=3, price=10 → no discount → total = 30
@@ -235,12 +235,12 @@ public class SaleTests
             new[] { new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 4, 20m) });
 
         var evt = sale.DomainEvents.OfType<SaleModifiedEvent>().Single();
-        evt.PreviousTotalAmount.Should().Be(previousTotal, "captures total before mutation");
-        evt.NewTotalAmount.Should().Be(sale.TotalAmount, "captures total after recalculation");
-        evt.NewTotalAmount.Should().NotBe(previousTotal, "the amounts must differ when items change");
+        evt.Previous.TotalAmount.Should().Be(previousTotal, "captures total before mutation");
+        evt.Current.TotalAmount.Should().Be(sale.TotalAmount, "captures total after recalculation");
+        evt.Current.TotalAmount.Should().NotBe(previousTotal, "the amounts must differ when items change");
     }
 
-    [Fact(DisplayName = "UpdateFull with same items preserves TotalAmount in both delta fields")]
+    [Fact(DisplayName = "UpdateFull with same items preserves TotalAmount in both snapshot fields")]
     public void UpdateFull_SameItems_SaleModifiedEvent_TotalAmountUnchanged()
     {
         var prodId = Guid.NewGuid();
@@ -254,7 +254,7 @@ public class SaleTests
             new[] { new NewSaleItemSpec(prodId, "Item", 5, 10m) });
 
         var evt = sale.DomainEvents.OfType<SaleModifiedEvent>().Single();
-        evt.PreviousTotalAmount.Should().Be(totalBefore);
-        evt.NewTotalAmount.Should().Be(totalBefore, "same items means same total");
+        evt.Previous.TotalAmount.Should().Be(totalBefore);
+        evt.Current.TotalAmount.Should().Be(totalBefore, "same items means same total");
     }
 }

@@ -32,11 +32,6 @@ public class SaleItem : BaseEntity
         Apply(quantity, unitPrice);
     }
 
-    internal void Update(int quantity, decimal unitPrice)
-    {
-        Apply(quantity, unitPrice);
-    }
-
     internal void Cancel()
     {
         IsCancelled = true;

@@ -17,10 +17,11 @@ public class ListSalesHandler : IRequestHandler<ListSalesQuery, ListSalesResult>
 
     public async Task<ListSalesResult> Handle(ListSalesQuery query, CancellationToken cancellationToken)
     {
-        var (items, totalCount) = await _repository.ListAsync(
+        var criteria = new SaleListCriteria(
             query.Page, query.Size, query.Order,
-            query.CustomerName, query.DateFrom, query.DateTo, query.IsCancelled,
-            cancellationToken);
+            query.CustomerName, query.DateFrom, query.DateTo, query.IsCancelled);
+
+        var (items, totalCount) = await _repository.ListAsync(criteria, cancellationToken);
 
         var totalPages = query.Size > 0 ? (int)Math.Ceiling(totalCount / (double)query.Size) : 0;
         return new ListSalesResult

@@ -95,8 +95,7 @@ public class Sale : AggregateRoot
 
         item.Cancel();
         RecalculateTotal();
-        UpdatedAt = DateTime.UtcNow;
-        RowVersion++;
+        BumpVersion();
 
         RaiseDomainEvent(new ItemCancelledEvent(
             Id, item.Id, item.ProductId, item.ProductName,
@@ -110,8 +109,7 @@ public class Sale : AggregateRoot
             throw new DomainException($"Sale {SaleNumber} is already cancelled.");
 
         IsCancelled = true;
-        UpdatedAt = DateTime.UtcNow;
-        RowVersion++;
+        BumpVersion();
 
         RaiseDomainEvent(new SaleCancelledEvent(
             Id, SaleNumber,
@@ -133,13 +131,8 @@ public class Sale : AggregateRoot
         if (IsCancelled)
             throw new DomainException("Cannot update a cancelled sale.");
 
-        // Capture previous state before any mutation for the SaleModifiedEvent delta.
-        var previousCustomerId = CustomerId;
-        var previousCustomerName = CustomerName;
-        var previousBranchId = BranchId;
-        var previousBranchName = BranchName;
-        var previousSaleDate = SaleDate;
-        var previousTotal = TotalAmount;
+        // Capture previous snapshot before any mutation so SaleModifiedEvent.Previous is accurate.
+        var previous = BuildSnapshot();
 
         // Update header
         CustomerId = customerId;
@@ -161,20 +154,26 @@ public class Sale : AggregateRoot
             _items.Add(new SaleItem(Id, spec.ProductId, spec.ProductName, spec.Quantity, spec.UnitPrice));
 
         RecalculateTotal();
-        UpdatedAt = DateTime.UtcNow;
-        RowVersion++; // single increment for the entire PUT operation
+        BumpVersion(); // single increment for the entire PUT operation
 
-        foreach (var item in _items)
-            RaiseDomainEvent(new ItemAddedEvent(
-                Id, item.Id, item.ProductId, item.ProductName,
-                item.Quantity, item.UnitPrice, item.Discount.Value, item.TotalAmount));
-
-        // SaleModifiedEvent emitted after RecalculateTotal so NewTotalAmount is accurate.
-        RaiseDomainEvent(new SaleModifiedEvent(
-            Id, SaleNumber,
-            previousCustomerId, previousCustomerName, previousBranchId, previousBranchName, previousSaleDate, previousTotal,
-            CustomerId, CustomerName, BranchId, BranchName, SaleDate, TotalAmount));
+        // SaleModifiedEvent carries full before/after snapshots (items included) so downstream
+        // consumers can rebuild state without querying the database.
+        RaiseDomainEvent(new SaleModifiedEvent(Id, SaleNumber, previous, BuildSnapshot()));
     }
+
+    private void BumpVersion()
+    {
+        RowVersion++;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    private SaleSnapshot BuildSnapshot() =>
+        new(CustomerId, CustomerName, BranchId, BranchName, SaleDate, TotalAmount,
+            _items.Select(i => new SaleItemSnapshot(
+                i.Id, i.ProductId, i.ProductName, i.Quantity, i.UnitPrice,
+                i.Discount.Value, i.TotalAmount))
+            .ToList()
+            .AsReadOnly());
 
     private void RecalculateTotal()
     {

@@ -35,7 +35,7 @@ public sealed class DiscountRate : IEquatable<DiscountRate>
         if (quantity > 20)
             throw new DomainException($"Cannot sell more than 20 identical items. Requested: {quantity}.");
         if (quantity >= 10) return TwentyPercent;
-        if (quantity >= 4)  return TenPercent;
+        if (quantity > 4)  return TenPercent;
         return None;
     }
 

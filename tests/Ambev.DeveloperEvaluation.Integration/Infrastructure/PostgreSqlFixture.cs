@@ -1,4 +1,5 @@
 using Ambev.DeveloperEvaluation.ORM;
+using Ambev.DeveloperEvaluation.ORM.Interceptors;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -26,6 +27,7 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
     {
         var options = new DbContextOptionsBuilder<DefaultContext>()
             .UseNpgsql(ConnectionString)
+            .AddInterceptors(new OutboxInterceptor())
             .Options;
         return new DefaultContext(options);
     }

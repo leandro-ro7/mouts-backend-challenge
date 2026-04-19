@@ -10,6 +10,35 @@ public class ValidationExceptionMiddleware
     private readonly RequestDelegate _next;
     private readonly ILogger<ValidationExceptionMiddleware> _logger;
 
+    // OCP: adding a new exception type is a single dictionary entry — no method body change.
+    private static readonly Dictionary<Type, (int Status, string Code, LogLevel Level, Func<Exception, string> GetMessage)> ExceptionHandlers =
+        new()
+        {
+            [typeof(ValidationException)] = (
+                400, "ValidationError", LogLevel.Warning,
+                ex => string.Join("; ", ((ValidationException)ex).Errors.Select(e => e.ErrorMessage))),
+
+            [typeof(DomainException)] = (
+                400, "BusinessRuleViolation", LogLevel.Warning,
+                ex => ex.Message),
+
+            [typeof(UnauthorizedAccessException)] = (
+                401, "Unauthorized", LogLevel.Warning,
+                ex => ex.Message),
+
+            [typeof(KeyNotFoundException)] = (
+                404, "ResourceNotFound", LogLevel.Warning,
+                ex => ex.Message),
+
+            [typeof(ConcurrencyException)] = (
+                409, "ConcurrencyConflict", LogLevel.Warning,
+                ex => ex.Message),
+
+            [typeof(InvalidOperationException)] = (
+                400, "InvalidOperation", LogLevel.Warning,
+                ex => ex.Message),
+        };
+
     public ValidationExceptionMiddleware(
         RequestDelegate next,
         ILogger<ValidationExceptionMiddleware> logger)
@@ -24,57 +53,21 @@ public class ValidationExceptionMiddleware
         {
             await _next(context);
         }
-        catch (ValidationException ex)
-        {
-            _logger.LogWarning("Validation failed for {Path}: {Errors}",
-                context.Request.Path,
-                string.Join("; ", ex.Errors.Select(e => e.ErrorMessage)));
-
-            await WriteResponse(context, 400, "ValidationError",
-                "One or more validation errors occurred.",
-                string.Join("; ", ex.Errors.Select(e => e.ErrorMessage)));
-        }
-        catch (DomainException ex)
-        {
-            _logger.LogWarning("Business rule violation for {Path}: {Message}",
-                context.Request.Path, ex.Message);
-
-            await WriteResponse(context, 400, "BusinessRuleViolation", ex.Message, ex.Message);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            _logger.LogWarning("Unauthorized access for {Path}: {Message}",
-                context.Request.Path, ex.Message);
-
-            await WriteResponse(context, 401, "Unauthorized", ex.Message, ex.Message);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            _logger.LogWarning("Resource not found for {Path}: {Message}",
-                context.Request.Path, ex.Message);
-
-            await WriteResponse(context, 404, "ResourceNotFound", ex.Message, ex.Message);
-        }
-        catch (ConcurrencyException ex)
-        {
-            _logger.LogWarning("Concurrency conflict for {Path}: {Message}",
-                context.Request.Path, ex.Message);
-
-            await WriteResponse(context, 409, "ConcurrencyConflict", ex.Message, ex.Message);
-        }
-        catch (InvalidOperationException ex)
-        {
-            _logger.LogWarning("Invalid operation for {Path}: {Message}",
-                context.Request.Path, ex.Message);
-
-            await WriteResponse(context, 400, "InvalidOperation", ex.Message, ex.Message);
-        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unhandled exception for {Path}", context.Request.Path);
-
-            await WriteResponse(context, 500, "InternalError",
-                "An unexpected error occurred.", "An unexpected error occurred.");
+            if (ExceptionHandlers.TryGetValue(ex.GetType(), out var handler))
+            {
+                var message = handler.GetMessage(ex);
+                _logger.Log(handler.Level, "Exception {Code} for {Path}: {Message}",
+                    handler.Code, context.Request.Path, message);
+                await WriteResponse(context, handler.Status, handler.Code, message, message);
+            }
+            else
+            {
+                _logger.LogError(ex, "Unhandled exception for {Path}", context.Request.Path);
+                await WriteResponse(context, 500, "InternalError",
+                    "An unexpected error occurred.", "An unexpected error occurred.");
+            }
         }
     }
 

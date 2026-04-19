@@ -68,16 +68,11 @@ public class Sale : AggregateRoot
 
         sale.RecalculateTotal();
 
-        var snapshots = sale._items
-            .Select(i => new SaleItemSnapshot(i.Id, i.ProductId, i.ProductName, i.Quantity, i.UnitPrice, i.Discount.Value, i.TotalAmount))
-            .ToList()
-            .AsReadOnly();
-
         sale.RaiseDomainEvent(new SaleCreatedEvent(
             sale.Id, sale.SaleNumber,
             customerId, customerName,
             branchId, branchName,
-            saleDate, sale.TotalAmount, snapshots));
+            saleDate, sale.TotalAmount, sale.BuildSnapshot().Items));
 
         return sale;
     }

@@ -1,10 +1,12 @@
 using Ambev.DeveloperEvaluation.Domain.Repositories;
 using Ambev.DeveloperEvaluation.Domain.Services;
 using Ambev.DeveloperEvaluation.ORM;
+using Ambev.DeveloperEvaluation.ORM.Interceptors;
 using Ambev.DeveloperEvaluation.Infrastructure.Messaging;
 using Ambev.DeveloperEvaluation.ORM.Repositories;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ambev.DeveloperEvaluation.IoC.ModuleInitializers;
@@ -13,6 +15,14 @@ public class InfrastructureModuleInitializer : IModuleInitializer
 {
     public void Initialize(WebApplicationBuilder builder)
     {
+        builder.Services.AddSingleton<OutboxInterceptor>();
+
+        builder.Services.AddDbContext<DefaultContext>((sp, options) =>
+            options.UseNpgsql(
+                builder.Configuration.GetConnectionString("DefaultConnection"),
+                b => b.MigrationsAssembly("Ambev.DeveloperEvaluation.ORM"))
+            .AddInterceptors(sp.GetRequiredService<OutboxInterceptor>()));
+
         builder.Services.AddScoped<DbContext>(provider => provider.GetRequiredService<DefaultContext>());
 
         // Repositories

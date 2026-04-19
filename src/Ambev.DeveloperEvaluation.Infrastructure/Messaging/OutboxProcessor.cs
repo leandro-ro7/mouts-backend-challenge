@@ -79,78 +79,78 @@ public class OutboxProcessor : BackgroundService
         var publisher = scope.ServiceProvider.GetRequiredService<IEventPublisher>();
 
         var batch = await ClaimBatchAsync(db, cancellationToken);
-        if (batch.Count == 0)
-            return;
 
         foreach (var message in batch)
+            await ProcessSingleMessageAsync(message, publisher, db, cancellationToken);
+    }
+
+    private async Task ProcessSingleMessageAsync(
+        OutboxMessage message,
+        IEventPublisher publisher,
+        DefaultContext db,
+        CancellationToken cancellationToken)
+    {
+        try
         {
+            if (!EventTypeRegistry.TryGetValue(message.EventType, out var eventType))
+            {
+                _logger.LogWarning(
+                    "Outbox: unknown event type '{Type}' for message {Id}. Skipping permanently.",
+                    message.EventType, message.Id);
+                await MarkProcessedAsync(message, db, cancellationToken);
+                return;
+            }
+
+            IDomainEvent domainEvent;
             try
             {
-                if (!EventTypeRegistry.TryGetValue(message.EventType, out var eventType))
-                {
-                    _logger.LogWarning(
-                        "Outbox: unknown event type '{Type}' for message {Id}. Skipping permanently.",
-                        message.EventType, message.Id);
-                    message.ProcessedAt = DateTime.UtcNow;
-                    message.LockedUntil = null;
-                    message.ClaimId = null;
-                    await db.SaveChangesAsync(cancellationToken);
-                    continue;
-                }
-
-                IDomainEvent domainEvent;
-                try
-                {
-                    domainEvent = (IDomainEvent)JsonSerializer.Deserialize(message.Payload, eventType)!;
-                }
-                catch (JsonException ex)
-                {
-                    // Payload is permanently malformed — retrying will never succeed.
-                    // Mark as processed to remove it from the active queue and prevent infinite poison-pill loop.
-                    _logger.LogError(ex,
-                        "Outbox: malformed JSON payload for message {Id} (type '{Type}'). Skipping permanently.",
-                        message.Id, message.EventType);
-                    message.ProcessedAt = DateTime.UtcNow;
-                    message.LockedUntil = null;
-                    message.ClaimId = null;
-                    await db.SaveChangesAsync(cancellationToken);
-                    continue;
-                }
-
-                // Version guard: the stored EventVersion (written at aggregate-save time) must match
-                // the current schema version of the deserialized type. A mismatch means this message
-                // was written before a schema upgrade — fields may be missing or reinterpreted.
-                // We still dispatch (the upgrade may be backwards-compatible) but emit a structured
-                // warning so operators can detect stale messages in the queue and act accordingly.
-                if (message.EventVersion != domainEvent.Version)
-                {
-                    _logger.LogWarning(
-                        "Outbox: version mismatch for message {Id} — stored EventVersion={StoredVersion}, " +
-                        "current {EventType} Version={CurrentVersion}. " +
-                        "The payload was written with an older schema; verify backwards compatibility.",
-                        message.Id, message.EventVersion, eventType.Name, domainEvent.Version);
-                }
-
-                await publisher.PublishAsync(domainEvent, cancellationToken);
-
-                message.ProcessedAt = DateTime.UtcNow;
-                message.LockedUntil = null;
-                message.ClaimId = null;
-                await db.SaveChangesAsync(cancellationToken);
-
-                _logger.LogInformation(
-                    "Outbox: dispatched {EventType} v{Version} ({Id}).",
-                    eventType.Name, domainEvent.Version, message.Id);
+                domainEvent = (IDomainEvent)JsonSerializer.Deserialize(message.Payload, eventType)!;
             }
-            catch (Exception ex)
+            catch (JsonException ex)
             {
-                // Release lock so the next poll (or another instance) can retry.
-                message.LockedUntil = null;
-                message.ClaimId = null;
-                await db.SaveChangesAsync(cancellationToken);
-                _logger.LogError(ex, "Outbox: failed to dispatch {Id}. Lock released for retry.", message.Id);
+                // Payload is permanently malformed — retrying will never succeed.
+                _logger.LogError(ex,
+                    "Outbox: malformed JSON payload for message {Id} (type '{Type}'). Skipping permanently.",
+                    message.Id, message.EventType);
+                await MarkProcessedAsync(message, db, cancellationToken);
+                return;
             }
+
+            // Version guard: mismatch means the message was written before a schema upgrade.
+            // Still dispatch (may be backwards-compatible) but warn operators.
+            if (message.EventVersion != domainEvent.Version)
+            {
+                _logger.LogWarning(
+                    "Outbox: version mismatch for message {Id} — stored EventVersion={StoredVersion}, " +
+                    "current {EventType} Version={CurrentVersion}. " +
+                    "The payload was written with an older schema; verify backwards compatibility.",
+                    message.Id, message.EventVersion, eventType.Name, domainEvent.Version);
+            }
+
+            await publisher.PublishAsync(domainEvent, cancellationToken);
+            await MarkProcessedAsync(message, db, cancellationToken);
+
+            _logger.LogInformation(
+                "Outbox: dispatched {EventType} v{Version} ({Id}).",
+                eventType.Name, domainEvent.Version, message.Id);
         }
+        catch (Exception ex)
+        {
+            // Release lock so the next poll (or another instance) can retry.
+            message.LockedUntil = null;
+            message.ClaimId = null;
+            await db.SaveChangesAsync(cancellationToken);
+            _logger.LogError(ex, "Outbox: failed to dispatch {Id}. Lock released for retry.", message.Id);
+        }
+    }
+
+    private static async Task MarkProcessedAsync(
+        OutboxMessage message, DefaultContext db, CancellationToken cancellationToken)
+    {
+        message.ProcessedAt = DateTime.UtcNow;
+        message.LockedUntil = null;
+        message.ClaimId = null;
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>
@@ -172,8 +172,6 @@ public class OutboxProcessor : BackgroundService
 
         if (db.Database.IsNpgsql())
         {
-            // Single atomic statement: UPDATE rows selected by FOR UPDATE SKIP LOCKED.
-            // Any row already locked by another instance is skipped — no double-dispatch.
             await db.Database.ExecuteSqlInterpolatedAsync(
                 $"""
                 UPDATE "OutboxMessages"
@@ -188,7 +186,6 @@ public class OutboxProcessor : BackgroundService
                 )
                 """, cancellationToken);
 
-            // Fetch exactly the rows this instance just claimed — identified by ClaimId.
             return await db.OutboxMessages
                 .Where(m => m.ClaimId == claimId)
                 .OrderBy(m => m.OccurredAt)

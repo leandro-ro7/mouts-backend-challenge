@@ -4,6 +4,7 @@ using Ambev.DeveloperEvaluation.Application.Sales.GetSale;
 using Ambev.DeveloperEvaluation.Domain.Events;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
 using Ambev.DeveloperEvaluation.ORM;
+using Ambev.DeveloperEvaluation.ORM.Interceptors;
 using Ambev.DeveloperEvaluation.ORM.Repositories;
 using AutoMapper;
 using FluentAssertions;
@@ -28,6 +29,7 @@ public class CreateSaleIntegrationTests : IDisposable
     {
         var options = new DbContextOptionsBuilder<DefaultContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .AddInterceptors(new OutboxInterceptor())
             .Options;
 
         _context = new DefaultContext(options);

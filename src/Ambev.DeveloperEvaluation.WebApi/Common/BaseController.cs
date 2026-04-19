@@ -8,10 +8,12 @@ namespace Ambev.DeveloperEvaluation.WebApi.Common;
 public class BaseController : ControllerBase
 {
     protected Guid GetCurrentUserId() =>
-            Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? throw new NullReferenceException());
+        Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? throw new UnauthorizedAccessException("User identity claim is missing."));
 
     protected string GetCurrentUserEmail() =>
-        User.FindFirst(ClaimTypes.Email)?.Value ?? throw new NullReferenceException();
+        User.FindFirst(ClaimTypes.Email)?.Value
+            ?? throw new UnauthorizedAccessException("User email claim is missing.");
 
     protected IActionResult Ok<T>(T data) =>
             base.Ok(new ApiResponseWithData<T> { Data = data, Success = true });

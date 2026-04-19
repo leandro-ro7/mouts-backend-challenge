@@ -25,6 +25,7 @@ public class SaleItem : BaseEntity
 
     internal SaleItem(Guid saleId, Guid productId, string productName, int quantity, decimal unitPrice)
     {
+        Id = Guid.NewGuid();
         SaleId = saleId;
         ProductId = productId;
         ProductName = productName;

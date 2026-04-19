@@ -1,3 +1,4 @@
+using Ambev.DeveloperEvaluation.Domain.Exceptions;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
 using Ambev.DeveloperEvaluation.Domain.ValueObjects;
 using AutoMapper;
@@ -21,17 +22,22 @@ public class UpdateSaleHandler : IRequestHandler<UpdateSaleCommand, UpdateSaleRe
         var sale = await _repository.GetByIdAsync(command.Id, cancellationToken)
             ?? throw new KeyNotFoundException($"Sale with ID {command.Id} was not found.");
 
-        // Update raises SaleModifiedEvent internally
-        sale.Update(command.CustomerId, command.CustomerName,
-            command.BranchId, command.BranchName, command.SaleDate);
+        // Reject immediately if the client's version is stale — avoids a lost update.
+        if (sale.RowVersion != command.RowVersion)
+            throw new ConcurrencyException(
+                $"Sale {command.Id} was modified by another request. " +
+                $"Reload the resource and retry. (expected {command.RowVersion}, current {sale.RowVersion})");
 
-        // ReplaceItems replaces all items WITHOUT raising ItemCancelledEvent for each —
-        // this is a replace-all operation, not individual business cancellations
-        sale.ReplaceItems(command.Items
-            .Select(i => new NewSaleItemSpec(i.ProductId, i.ProductName, i.Quantity, i.UnitPrice)));
+        // UpdateFull atomically updates header + replaces items in one RowVersion increment.
+        // Raises SaleModifiedEvent and ItemCancelledEvent for each active item removed.
+        sale.UpdateFull(
+            command.CustomerId, command.CustomerName,
+            command.BranchId, command.BranchName, command.SaleDate,
+            command.Items.Select(i => new NewSaleItemSpec(i.ProductId, i.ProductName, i.Quantity, i.UnitPrice)));
 
+        // ConcurrencyException may be thrown by the repository if EF Core detects
+        // a concurrent modification between the load and the save (DbUpdateConcurrencyException).
         var updated = await _repository.UpdateAsync(sale, cancellationToken);
-
         return _mapper.Map<UpdateSaleResult>(updated);
     }
 }

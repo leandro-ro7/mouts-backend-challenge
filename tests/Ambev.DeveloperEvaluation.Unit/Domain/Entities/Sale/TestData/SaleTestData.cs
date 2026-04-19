@@ -1,3 +1,4 @@
+using Ambev.DeveloperEvaluation.Domain.ValueObjects;
 using Bogus;
 using SaleEntity = Ambev.DeveloperEvaluation.Domain.Entities.Sale;
 
@@ -9,30 +10,25 @@ public static class SaleTestData
 
     public static SaleEntity CreateValidSale()
     {
-        var sale = SaleEntity.Create(
+        var productId = Faker.Random.Guid();
+        var productName = Faker.Commerce.ProductName();
+        var unitPrice = Faker.Finance.Amount(1, 100);
+
+        return SaleEntity.Create(
             Faker.Random.Guid(),
             Faker.Name.FullName(),
             Faker.Random.Guid(),
             Faker.Address.City(),
-            DateTime.UtcNow);
-
-        sale.AddItem(
-            Faker.Random.Guid(),
-            Faker.Commerce.ProductName(),
-            1,
-            Faker.Finance.Amount(1, 100));
-
-        return sale;
+            DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(productId, productName, 1, unitPrice) });
     }
 
     public static SaleEntity CreateSaleWithItem(int quantity, decimal unitPrice = 10m)
     {
-        var sale = SaleEntity.Create(
+        return SaleEntity.Create(
             Faker.Random.Guid(), Faker.Name.FullName(),
             Faker.Random.Guid(), Faker.Address.City(),
-            DateTime.UtcNow);
-
-        sale.AddItem(Faker.Random.Guid(), Faker.Commerce.ProductName(), quantity, unitPrice);
-        return sale;
+            DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Faker.Random.Guid(), Faker.Commerce.ProductName(), quantity, unitPrice) });
     }
 }

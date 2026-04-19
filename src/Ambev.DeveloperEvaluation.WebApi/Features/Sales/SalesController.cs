@@ -34,13 +34,7 @@ public class SalesController : BaseController
     {
         var command = _mapper.Map<CreateSaleCommand>(request);
         var result = await _mediator.Send(command, ct);
-
-        return Created(string.Empty, new ApiResponseWithData<CreateSaleResult>
-        {
-            Success = true,
-            Message = "Sale created successfully",
-            Data = result
-        });
+        return Created("GetSaleById", new { id = result.Id }, result);
     }
 
     [HttpGet]
@@ -49,41 +43,55 @@ public class SalesController : BaseController
         [FromQuery] int _page = 1,
         [FromQuery] int _size = 10,
         [FromQuery] string? _order = null,
+        [FromQuery] string? customerName = null,
+        [FromQuery] DateTime? dateFrom = null,
+        [FromQuery] DateTime? dateTo = null,
+        [FromQuery] bool? isCancelled = null,
         CancellationToken ct = default)
     {
-        var query = new ListSalesQuery { Page = _page, Size = _size, Order = _order };
+        var query = new ListSalesQuery
+        {
+            Page = _page, Size = _size, Order = _order,
+            CustomerName = customerName,
+            DateFrom = dateFrom, DateTo = dateTo,
+            IsCancelled = isCancelled
+        };
         var result = await _mediator.Send(query, ct);
-        return Ok(new ApiResponseWithData<ListSalesResult> { Success = true, Data = result });
+        return Ok(result);
     }
 
-    [HttpGet("{id:guid}")]
+    [HttpGet("{id:guid}", Name = "GetSaleById")]
     [ProducesResponseType(typeof(ApiResponseWithData<GetSaleResult>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetSale([FromRoute] Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new GetSaleQuery { Id = id }, ct);
-        return Ok(new ApiResponseWithData<GetSaleResult> { Success = true, Data = result });
+        return Ok(result);
     }
 
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponseWithData<UpdateSaleResult>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> UpdateSale([FromRoute] Guid id, [FromBody] CreateSaleRequest request, CancellationToken ct)
+    public async Task<IActionResult> UpdateSale([FromRoute] Guid id, [FromBody] UpdateSaleRequest request, CancellationToken ct)
     {
         var command = _mapper.Map<UpdateSaleCommand>(request);
         command.Id = id;
         var result = await _mediator.Send(command, ct);
-        return Ok(new ApiResponseWithData<UpdateSaleResult> { Success = true, Data = result });
+        return Ok(result);
     }
 
+    /// <summary>
+    /// Soft-deletes a sale via cancellation. Idempotent: already-cancelled sales return 200.
+    /// Financial records are never physically removed.
+    /// </summary>
     [HttpDelete("{id:guid}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponseWithData<DeleteSaleResult>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteSale([FromRoute] Guid id, CancellationToken ct)
     {
-        await _mediator.Send(new DeleteSaleCommand { Id = id }, ct);
-        return Ok(new ApiResponse { Success = true, Message = "Sale cancelled successfully" });
+        var result = await _mediator.Send(new DeleteSaleCommand { Id = id }, ct);
+        return Ok(result);
     }
 
     [HttpPatch("{id:guid}/cancel")]
@@ -93,7 +101,7 @@ public class SalesController : BaseController
     public async Task<IActionResult> CancelSale([FromRoute] Guid id, CancellationToken ct)
     {
         var result = await _mediator.Send(new CancelSaleCommand { Id = id }, ct);
-        return Ok(new ApiResponseWithData<CancelSaleResult> { Success = true, Data = result });
+        return Ok(result);
     }
 
     [HttpPatch("{id:guid}/items/{itemId:guid}/cancel")]
@@ -104,6 +112,6 @@ public class SalesController : BaseController
     {
         var command = new CancelSaleItemCommand { SaleId = id, ItemId = itemId };
         var result = await _mediator.Send(command, ct);
-        return Ok(new ApiResponseWithData<CancelSaleItemResult> { Success = true, Data = result });
+        return Ok(result);
     }
 }

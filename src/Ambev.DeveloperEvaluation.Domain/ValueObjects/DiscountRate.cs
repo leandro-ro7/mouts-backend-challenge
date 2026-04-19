@@ -19,6 +19,9 @@ public sealed class DiscountRate : IEquatable<DiscountRate>
     public static readonly DiscountRate TenPercent = new(0.10m);
     public static readonly DiscountRate TwentyPercent = new(0.20m);
 
+    // Used by EF Core value converter to reconstruct from a persisted decimal.
+    public static DiscountRate FromValue(decimal value) => new(value);
+
     /// <summary>
     /// Returns the applicable discount rate for a given quantity.
     /// Decision: "4+" in requirements summary prevails over "above 4" in narrative.

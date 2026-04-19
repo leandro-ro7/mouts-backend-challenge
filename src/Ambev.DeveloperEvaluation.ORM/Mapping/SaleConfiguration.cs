@@ -1,4 +1,5 @@
 using Ambev.DeveloperEvaluation.Domain.Entities;
+using Ambev.DeveloperEvaluation.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -25,6 +26,11 @@ public class SaleConfiguration : IEntityTypeConfiguration<Sale>
 
         builder.Property(s => s.TotalAmount).HasColumnType("numeric(18,2)");
         builder.Property(s => s.IsCancelled).IsRequired().HasDefaultValue(false);
+
+        // Optimistic concurrency: EF Core includes "AND RowVersion = @original" in UPDATE WHERE.
+        // DbUpdateConcurrencyException is thrown if the row was modified between the load and save.
+        builder.Property(s => s.RowVersion).IsConcurrencyToken();
+
         builder.Property(s => s.CreatedAt).IsRequired();
         builder.Property(s => s.UpdatedAt);
 
@@ -41,7 +47,10 @@ public class SaleItemConfiguration : IEntityTypeConfiguration<SaleItem>
     {
         builder.ToTable("SaleItems");
         builder.HasKey(i => i.Id);
-        builder.Property(i => i.Id).HasColumnType("uuid").HasDefaultValueSql("gen_random_uuid()");
+        // IDs are always set in .NET (Guid.NewGuid() in constructor).
+        // ValueGeneratedNever prevents EF Core from misclassifying new items as Modified
+        // when DetectChanges processes navigation-collection changes after ReplaceItems.
+        builder.Property(i => i.Id).HasColumnType("uuid").ValueGeneratedNever();
 
         builder.Property(i => i.SaleId).IsRequired();
 
@@ -52,14 +61,14 @@ public class SaleItemConfiguration : IEntityTypeConfiguration<SaleItem>
         builder.Property(i => i.Quantity).IsRequired();
         builder.Property(i => i.UnitPrice).IsRequired().HasColumnType("numeric(18,2)");
 
-        // DiscountRate is an owned Value Object — stored in the same "Discount" column, no schema change
-        builder.OwnsOne(i => i.Discount, d =>
-        {
-            d.Property(x => x.Value)
-                .HasColumnName("Discount")
-                .HasColumnType("numeric(5,4)")
-                .IsRequired();
-        });
+        // DiscountRate stored as a decimal via value converter.
+        // This avoids a separate ChangeTracker entry (as OwnsOne would create), which
+        // causes a double-delete on the InMemory provider when cascade-deleting items.
+        builder.Property(i => i.Discount)
+            .HasConversion(d => d.Value, v => DiscountRate.FromValue(v))
+            .HasColumnName("Discount")
+            .HasColumnType("numeric(5,4)")
+            .IsRequired();
 
         builder.Property(i => i.TotalAmount).IsRequired().HasColumnType("numeric(18,2)");
         builder.Property(i => i.IsCancelled).IsRequired().HasDefaultValue(false);

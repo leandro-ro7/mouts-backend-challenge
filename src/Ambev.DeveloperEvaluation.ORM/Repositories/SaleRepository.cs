@@ -1,4 +1,5 @@
 using Ambev.DeveloperEvaluation.Domain.Entities;
+using Ambev.DeveloperEvaluation.Domain.Exceptions;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -35,9 +36,32 @@ public class SaleRepository : ISaleRepository
     }
 
     public async Task<(IEnumerable<Sale> Items, int TotalCount)> ListAsync(
-        int page, int size, string? order = null, CancellationToken cancellationToken = default)
+        int page, int size, string? order = null,
+        string? customerName = null,
+        DateTime? dateFrom = null,
+        DateTime? dateTo = null,
+        bool? isCancelled = null,
+        CancellationToken cancellationToken = default)
     {
-        var query = _context.Sales.Include(s => s.Items).AsQueryable();
+        // AsSplitQuery avoids the Cartesian explosion from JOIN between Sales and SaleItems.
+        var query = _context.Sales.Include(s => s.Items).AsSplitQuery().AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(customerName))
+        {
+            // ToLower() on both sides translates to LOWER(col) LIKE '%...%' in PostgreSQL,
+            // providing case-insensitive matching without requiring a custom collation.
+            var lowerName = customerName.ToLower();
+            query = query.Where(s => s.CustomerName.ToLower().Contains(lowerName));
+        }
+
+        if (dateFrom.HasValue)
+            query = query.Where(s => s.SaleDate >= dateFrom.Value);
+
+        if (dateTo.HasValue)
+            query = query.Where(s => s.SaleDate <= dateTo.Value);
+
+        if (isCancelled.HasValue)
+            query = query.Where(s => s.IsCancelled == isCancelled.Value);
 
         query = ApplyOrder(query, order);
 
@@ -52,19 +76,16 @@ public class SaleRepository : ISaleRepository
 
     public async Task<Sale> UpdateAsync(Sale sale, CancellationToken cancellationToken = default)
     {
-        _context.Sales.Update(sale);
-        await _context.SaveChangesAsync(cancellationToken);
-        return sale;
-    }
-
-    public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        var sale = await GetByIdAsync(id, cancellationToken);
-        if (sale == null) return false;
-
-        _context.Sales.Remove(sale);
-        await _context.SaveChangesAsync(cancellationToken);
-        return true;
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+            return sale;
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrencyException(
+                $"Sale {sale.Id} was modified by a concurrent request. Reload and retry.", ex);
+        }
     }
 
     private static IQueryable<Sale> ApplyOrder(IQueryable<Sale> query, string? order)

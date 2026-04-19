@@ -1,8 +1,12 @@
+using Ambev.DeveloperEvaluation.Domain.Entities;
 using Ambev.DeveloperEvaluation.Domain.Events;
 using Ambev.DeveloperEvaluation.Domain.Exceptions;
+using Ambev.DeveloperEvaluation.Domain.ValueObjects;
 using Ambev.DeveloperEvaluation.Unit.Domain.Entities.Sale.TestData;
 using FluentAssertions;
 using Xunit;
+
+using DomainSale = Ambev.DeveloperEvaluation.Domain.Entities.Sale;
 
 namespace Ambev.DeveloperEvaluation.Unit.Domain.Entities.Sale;
 
@@ -133,5 +137,94 @@ public class SaleTests
         sale.CancelItem(itemId);
 
         sale.DomainEvents.Should().ContainSingle(e => e is ItemCancelledEvent);
+    }
+
+    [Fact(DisplayName = "ReplaceItems with two active items raises two ItemCancelledEvents")]
+    public void ReplaceItems_TwoActiveItems_RaisesTwoItemCancelledEvents()
+    {
+        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
+        sale.AddItem(Guid.NewGuid(), "Item1", 2, 10m);
+        sale.AddItem(Guid.NewGuid(), "Item2", 3, 20m);
+        sale.ClearDomainEvents();
+
+        sale.ReplaceItems(new[]
+        {
+            new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 15m)
+        });
+
+        sale.DomainEvents.OfType<ItemCancelledEvent>()
+            .Should().HaveCount(2, "one event per active item removed");
+    }
+
+    [Fact(DisplayName = "ReplaceItems skips already-cancelled items when raising ItemCancelledEvent")]
+    public void ReplaceItems_AlreadyCancelledItem_NotRaisedAgain()
+    {
+        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
+        sale.AddItem(Guid.NewGuid(), "Active", 2, 10m);
+        var cancelledItemId = sale.AddItem(Guid.NewGuid(), "Cancelled", 2, 10m).Id;
+        sale.CancelItem(cancelledItemId);
+        sale.ClearDomainEvents();
+
+        sale.ReplaceItems(new[]
+        {
+            new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 15m)
+        });
+
+        // Only the active item should raise ItemCancelledEvent; the already-cancelled one must not
+        sale.DomainEvents.OfType<ItemCancelledEvent>()
+            .Should().HaveCount(1, "only the active item raises ItemCancelledEvent");
+    }
+
+    [Fact(DisplayName = "ReplaceItems with no active items raises no ItemCancelledEvents")]
+    public void ReplaceItems_NoActiveItems_RaisesNoItemCancelledEvent()
+    {
+        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
+        var itemId = sale.AddItem(Guid.NewGuid(), "OnlyItem", 2, 10m).Id;
+        sale.CancelItem(itemId);
+        sale.ClearDomainEvents();
+
+        sale.ReplaceItems(new[]
+        {
+            new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 15m)
+        });
+
+        sale.DomainEvents.OfType<ItemCancelledEvent>()
+            .Should().BeEmpty("all existing items were already cancelled");
+    }
+
+    [Fact(DisplayName = "UpdateFull increments RowVersion exactly once for a header+items mutation")]
+    public void UpdateFull_IncrementsRowVersionExactlyOnce()
+    {
+        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
+        sale.AddItem(Guid.NewGuid(), "Old", 2, 10m);
+        sale.ClearDomainEvents();
+        var initialVersion = sale.RowVersion;
+
+        sale.UpdateFull(
+            Guid.NewGuid(), "New Customer",
+            Guid.NewGuid(), "New Branch",
+            DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 20m) });
+
+        sale.RowVersion.Should().Be(initialVersion + 1,
+            "a single PUT is one logical mutation — one RowVersion increment");
+    }
+
+    [Fact(DisplayName = "UpdateFull raises both SaleModifiedEvent and ItemCancelledEvent")]
+    public void UpdateFull_RaisesSaleModifiedAndItemCancelledEvents()
+    {
+        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
+        sale.AddItem(Guid.NewGuid(), "OldItem", 3, 10m);
+        sale.ClearDomainEvents();
+
+        sale.UpdateFull(
+            Guid.NewGuid(), "New Customer",
+            Guid.NewGuid(), "New Branch",
+            DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 20m) });
+
+        sale.DomainEvents.Should().ContainSingle(e => e is SaleModifiedEvent);
+        sale.DomainEvents.Should().ContainSingle(e => e is ItemCancelledEvent,
+            "the one active old item must raise ItemCancelledEvent");
     }
 }

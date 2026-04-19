@@ -25,6 +25,7 @@ public class CancelSaleItemHandler : IRequestHandler<CancelSaleItemCommand, Canc
         {
             SaleId = sale.Id,
             ItemId = cancelledItem.Id,
+            IsCancelled = cancelledItem.IsCancelled,
             NewSaleTotalAmount = sale.TotalAmount
         };
     }

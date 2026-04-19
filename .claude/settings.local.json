@@ -8,7 +8,11 @@
       "Bash(dotnet restore *)",
       "Bash(dotnet search *)",
       "Bash(nuget search *)",
-      "Bash(dotnet add *)"
+      "Bash(dotnet add *)",
+      "Read(//mnt/c/mouts/**)",
+      "Read(//c//**)",
+      "Bash(find /c/mouts/mouts-backend-challenge/src -name \"CancelSaleHandler.cs\" -exec cat {} \\\\;)",
+      "Bash(xargs grep *)"
     ]
   }
 }

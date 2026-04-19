@@ -3,6 +3,7 @@ using Ambev.DeveloperEvaluation.Domain.Entities;
 using Ambev.DeveloperEvaluation.Domain.Events;
 using Ambev.DeveloperEvaluation.Domain.Exceptions;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
+using Ambev.DeveloperEvaluation.Domain.ValueObjects;
 using FluentAssertions;
 using NSubstitute;
 using Xunit;
@@ -23,7 +24,7 @@ public class CancelSaleHandlerTests
     [Fact(DisplayName = "Given existing active sale When cancelling Then marks cancelled and raises SaleCancelledEvent")]
     public async Task Handle_ActiveSale_CancelsSaleAndRaisesEvent()
     {
-        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow);
+        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
         sale.AddItem(Guid.NewGuid(), "Product", 2, 50m);
         sale.ClearDomainEvents(); // clear Create event for clean assertion
 
@@ -40,7 +41,7 @@ public class CancelSaleHandlerTests
     [Fact(DisplayName = "Given already-cancelled sale When cancelling again Then throws DomainException")]
     public async Task Handle_AlreadyCancelledSale_ThrowsDomainException()
     {
-        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow);
+        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
         sale.Cancel();
 
         _repository.GetByIdAsync(sale.Id, Arg.Any<CancellationToken>()).Returns(sale);

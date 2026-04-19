@@ -1,32 +1,22 @@
-﻿using Ambev.DeveloperEvaluation.Domain.Common;
+using Ambev.DeveloperEvaluation.Domain.Common;
 using Ambev.DeveloperEvaluation.Domain.Entities;
-using Ambev.DeveloperEvaluation.Domain.Services;
+using Ambev.DeveloperEvaluation.ORM.Outbox;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using System.Reflection;
+using System.Text.Json;
 
 namespace Ambev.DeveloperEvaluation.ORM;
 
 public class DefaultContext : DbContext
 {
-    private readonly IEventPublisher? _eventPublisher;
-    private readonly ILogger<DefaultContext>? _logger;
-
     public DbSet<User> Users { get; set; }
     public DbSet<Sale> Sales { get; set; }
     public DbSet<SaleItem> SaleItems { get; set; }
+    public DbSet<OutboxMessage> OutboxMessages { get; set; }
 
-    public DefaultContext(
-        DbContextOptions<DefaultContext> options,
-        IEventPublisher? eventPublisher = null,
-        ILogger<DefaultContext>? logger = null)
-        : base(options)
-    {
-        _eventPublisher = eventPublisher;
-        _logger = logger;
-    }
+    public DefaultContext(DbContextOptions<DefaultContext> options) : base(options) { }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -36,7 +26,7 @@ public class DefaultContext : DbContext
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        // Collect events before clearing them from entities
+        // Collect and clear domain events before the DB transaction.
         var events = ChangeTracker.Entries<AggregateRoot>()
             .SelectMany(e => e.Entity.DomainEvents)
             .ToList();
@@ -44,26 +34,25 @@ public class DefaultContext : DbContext
         foreach (var entry in ChangeTracker.Entries<AggregateRoot>())
             entry.Entity.ClearDomainEvents();
 
-        var result = await base.SaveChangesAsync(cancellationToken);
+        // Serialize events into OutboxMessages in the same transaction.
+        // The processor dispatches them asynchronously, guaranteeing at-least-once delivery.
+        foreach (var domainEvent in events)
+        {
+            OutboxMessages.Add(new OutboxMessage
+            {
+                Id = Guid.NewGuid(),
+                // FullName (no assembly version) is stable across renames/upgrades.
+                // The OutboxProcessor resolves the type via its registry using this key.
+                EventType = domainEvent.GetType().FullName!,
+                Payload = JsonSerializer.Serialize(domainEvent, domainEvent.GetType()),
+                OccurredAt = domainEvent.OccurredAt
+            });
+        }
 
-        if (_eventPublisher is not null)
-            foreach (var domainEvent in events)
-                try
-                {
-                    await _eventPublisher.PublishAsync(domainEvent, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    // Data is already committed — log and continue. A dead-letter/outbox
-                    // pattern would be needed for at-least-once delivery guarantees.
-                    _logger?.LogError(ex,
-                        "Failed to publish domain event {EventType}. Data was committed.",
-                        domainEvent.GetType().Name);
-                }
-
-        return result;
+        return await base.SaveChangesAsync(cancellationToken);
     }
 }
+
 public class DefaultContextFactory : IDesignTimeDbContextFactory<DefaultContext>
 {
     public DefaultContext CreateDbContext(string[] args)

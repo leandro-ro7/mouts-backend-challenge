@@ -11,6 +11,7 @@ public class SalesProfile : Profile
         CreateMap<CreateSaleRequest, CreateSaleCommand>();
         CreateMap<CreateSaleItemRequest, CreateSaleItemDto>();
 
-        CreateMap<CreateSaleRequest, UpdateSaleCommand>();
+        CreateMap<UpdateSaleRequest, UpdateSaleCommand>();
+        CreateMap<UpdateSaleItemRequest, UpdateSaleItemDto>();
     }
 }

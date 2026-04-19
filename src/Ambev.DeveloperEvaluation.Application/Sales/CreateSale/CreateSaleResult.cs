@@ -13,5 +13,6 @@ public class CreateSaleResult
     public string BranchName { get; set; } = string.Empty;
     public decimal TotalAmount { get; set; }
     public bool IsCancelled { get; set; }
+    public uint RowVersion { get; set; }
     public List<SaleItemResult> Items { get; set; } = new();
 }

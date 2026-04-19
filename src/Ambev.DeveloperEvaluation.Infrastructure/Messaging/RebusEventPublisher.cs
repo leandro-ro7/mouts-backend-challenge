@@ -3,7 +3,7 @@ using Ambev.DeveloperEvaluation.Domain.Services;
 using Microsoft.Extensions.Logging;
 using Rebus.Bus;
 
-namespace Ambev.DeveloperEvaluation.ORM.Messaging;
+namespace Ambev.DeveloperEvaluation.Infrastructure.Messaging;
 
 public class RebusEventPublisher : IEventPublisher
 {

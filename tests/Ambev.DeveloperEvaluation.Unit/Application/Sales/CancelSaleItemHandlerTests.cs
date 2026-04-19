@@ -3,6 +3,7 @@ using Ambev.DeveloperEvaluation.Domain.Entities;
 using Ambev.DeveloperEvaluation.Domain.Events;
 using Ambev.DeveloperEvaluation.Domain.Exceptions;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
+using Ambev.DeveloperEvaluation.Domain.ValueObjects;
 using FluentAssertions;
 using NSubstitute;
 using Xunit;
@@ -23,7 +24,7 @@ public class CancelSaleItemHandlerTests
     [Fact(DisplayName = "Given active sale with item When cancelling item Then recalculates total and raises ItemCancelledEvent")]
     public async Task Handle_ActiveItem_CancelsItemRecalculatesTotalAndRaisesEvent()
     {
-        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow);
+        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
         var item1 = sale.AddItem(Guid.NewGuid(), "Product A", 5, 100m);
         var item2 = sale.AddItem(Guid.NewGuid(), "Product B", 2, 50m);
         sale.ClearDomainEvents();
@@ -41,7 +42,7 @@ public class CancelSaleItemHandlerTests
     [Fact(DisplayName = "Given cancelled sale When cancelling item Then throws DomainException")]
     public async Task Handle_CancelledSale_ThrowsDomainException()
     {
-        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow);
+        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
         var item = sale.AddItem(Guid.NewGuid(), "Product", 2, 50m);
         sale.Cancel();
 
@@ -56,7 +57,7 @@ public class CancelSaleItemHandlerTests
     [Fact(DisplayName = "Given already-cancelled item When cancelling again Then throws DomainException")]
     public async Task Handle_AlreadyCancelledItem_ThrowsDomainException()
     {
-        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow);
+        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
         var item = sale.AddItem(Guid.NewGuid(), "Product", 2, 50m);
         sale.CancelItem(item.Id);
 

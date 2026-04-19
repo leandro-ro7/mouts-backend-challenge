@@ -30,13 +30,13 @@ public class ValidationExceptionMiddleware
         {
             await WriteResponse(context, 401, "Unauthorized", ex.Message, ex.Message);
         }
-        catch (NullReferenceException)
-        {
-            await WriteResponse(context, 401, "Unauthorized", "Authentication required.", "Authentication required.");
-        }
         catch (KeyNotFoundException ex)
         {
             await WriteResponse(context, 404, "ResourceNotFound", ex.Message, ex.Message);
+        }
+        catch (ConcurrencyException ex)
+        {
+            await WriteResponse(context, 409, "ConcurrencyConflict", ex.Message, ex.Message);
         }
         catch (InvalidOperationException ex)
         {

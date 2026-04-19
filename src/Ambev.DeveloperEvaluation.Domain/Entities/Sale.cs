@@ -23,6 +23,11 @@ public class Sale : AggregateRoot
     // Soft-delete — sale records are immutable historical data
     public bool IsCancelled { get; private set; }
 
+    // Optimistic concurrency token — incremented on every mutation.
+    // EF Core adds "AND RowVersion = @original" to UPDATE queries, causing
+    // DbUpdateConcurrencyException when a concurrent request already mutated the row.
+    public uint RowVersion { get; private set; }
+
     public DateTime CreatedAt { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
 
@@ -35,7 +40,8 @@ public class Sale : AggregateRoot
     public static Sale Create(
         Guid customerId, string customerName,
         Guid branchId, string branchName,
-        DateTime saleDate)
+        DateTime saleDate,
+        IEnumerable<NewSaleItemSpec> items)
     {
         var sale = new Sale
         {
@@ -50,7 +56,23 @@ public class Sale : AggregateRoot
             CreatedAt = DateTime.UtcNow
         };
 
-        sale.RaiseDomainEvent(new SaleCreatedEvent(sale.Id, sale.SaleNumber, customerId, customerName));
+        // Add items before raising the event so the snapshot is complete.
+        foreach (var spec in items)
+            sale._items.Add(new SaleItem(sale.Id, spec.ProductId, spec.ProductName, spec.Quantity, spec.UnitPrice));
+
+        sale.RecalculateTotal();
+
+        var snapshots = sale._items
+            .Select(i => new SaleItemSnapshot(i.Id, i.ProductId, i.ProductName, i.Quantity, i.UnitPrice, i.Discount.Value, i.TotalAmount))
+            .ToList()
+            .AsReadOnly();
+
+        sale.RaiseDomainEvent(new SaleCreatedEvent(
+            sale.Id, sale.SaleNumber,
+            customerId, customerName,
+            branchId, branchName,
+            saleDate, sale.TotalAmount, snapshots));
+
         return sale;
     }
 
@@ -95,8 +117,11 @@ public class Sale : AggregateRoot
         item.Cancel();
         RecalculateTotal();
         UpdatedAt = DateTime.UtcNow;
+        RowVersion++;
 
-        RaiseDomainEvent(new ItemCancelledEvent(Id, item.Id, item.ProductId, item.ProductName));
+        RaiseDomainEvent(new ItemCancelledEvent(
+            Id, item.Id, item.ProductId, item.ProductName,
+            item.Quantity, item.UnitPrice, item.TotalAmount));
         return item;
     }
 
@@ -107,8 +132,13 @@ public class Sale : AggregateRoot
 
         IsCancelled = true;
         UpdatedAt = DateTime.UtcNow;
+        RowVersion++;
 
-        RaiseDomainEvent(new SaleCancelledEvent(Id, SaleNumber));
+        RaiseDomainEvent(new SaleCancelledEvent(
+            Id, SaleNumber,
+            CustomerId, CustomerName,
+            BranchId, BranchName,
+            TotalAmount));
     }
 
     public void Update(Guid customerId, string customerName, Guid branchId, string branchName, DateTime saleDate)
@@ -116,31 +146,92 @@ public class Sale : AggregateRoot
         if (IsCancelled)
             throw new DomainException("Cannot update a cancelled sale.");
 
+        var evt = new SaleModifiedEvent(
+            Id, SaleNumber,
+            CustomerId, CustomerName, BranchId, BranchName, SaleDate,
+            customerId, customerName, branchId, branchName, saleDate);
+
         CustomerId = customerId;
         CustomerName = customerName;
         BranchId = branchId;
         BranchName = branchName;
         SaleDate = saleDate;
         UpdatedAt = DateTime.UtcNow;
+        RowVersion++;
 
-        RaiseDomainEvent(new SaleModifiedEvent(Id, SaleNumber));
+        RaiseDomainEvent(evt);
     }
 
-    public void ReplaceItems(IEnumerable<NewSaleItemSpec> newItems)
+    /// <summary>
+    /// Atomically updates the sale header and replaces all items in a single mutation.
+    /// Produces exactly one RowVersion increment — use this for the PUT endpoint to avoid
+    /// the double-increment that would occur when calling Update() + ReplaceItems() separately.
+    /// </summary>
+    public void UpdateFull(
+        Guid customerId, string customerName,
+        Guid branchId, string branchName,
+        DateTime saleDate,
+        IEnumerable<NewSaleItemSpec> newItems)
     {
         if (IsCancelled)
-            throw new DomainException("Cannot update items of a cancelled sale.");
+            throw new DomainException("Cannot update a cancelled sale.");
 
-        // Soft-cancel existing active items directly (bypasses CancelItem to avoid ItemCancelledEvent —
-        // this is a replace operation, not a business cancellation of individual items)
-        foreach (var item in _items.Where(i => !i.IsCancelled))
-            item.Cancel();
+        // Capture previous state before any mutation for the SaleModifiedEvent delta.
+        var evt = new SaleModifiedEvent(
+            Id, SaleNumber,
+            CustomerId, CustomerName, BranchId, BranchName, SaleDate,
+            customerId, customerName, branchId, branchName, saleDate);
+
+        // Update header
+        CustomerId = customerId;
+        CustomerName = customerName;
+        BranchId = branchId;
+        BranchName = branchName;
+        SaleDate = saleDate;
+
+        // Replace items — emit ItemCancelledEvent for each active item removed
+        var removed = _items.ToList();
+        _items.Clear();
+
+        foreach (var item in removed.Where(i => !i.IsCancelled))
+            RaiseDomainEvent(new ItemCancelledEvent(
+                Id, item.Id, item.ProductId, item.ProductName,
+                item.Quantity, item.UnitPrice, item.TotalAmount));
 
         foreach (var spec in newItems)
             _items.Add(new SaleItem(Id, spec.ProductId, spec.ProductName, spec.Quantity, spec.UnitPrice));
 
         RecalculateTotal();
         UpdatedAt = DateTime.UtcNow;
+        RowVersion++; // single increment for the entire PUT operation
+
+        RaiseDomainEvent(evt);
+    }
+
+    public IReadOnlyList<SaleItem> ReplaceItems(IEnumerable<NewSaleItemSpec> newItems)
+    {
+        if (IsCancelled)
+            throw new DomainException("Cannot update items of a cancelled sale.");
+
+        // Physically remove all existing items so the repository can delete them as orphans.
+        // Raise ItemCancelledEvent for each active item removed — downstream consumers must
+        // treat a replace-all PUT identically to individual CancelItem calls for removed items.
+        var removed = _items.ToList();
+        _items.Clear();
+
+        foreach (var item in removed.Where(i => !i.IsCancelled))
+            RaiseDomainEvent(new ItemCancelledEvent(
+                Id, item.Id, item.ProductId, item.ProductName,
+                item.Quantity, item.UnitPrice, item.TotalAmount));
+
+        foreach (var spec in newItems)
+            _items.Add(new SaleItem(Id, spec.ProductId, spec.ProductName, spec.Quantity, spec.UnitPrice));
+
+        RecalculateTotal();
+        UpdatedAt = DateTime.UtcNow;
+        RowVersion++;
+
+        return removed.AsReadOnly();
     }
 
     private void RecalculateTotal()

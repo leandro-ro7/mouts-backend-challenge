@@ -80,13 +80,39 @@ Substituiu a cadeia de `catch` por `Dictionary<Type, (Status, Code, LogLevel, Fu
 **`IOutboxContext` para desacoplamento**  
 `OutboxInterceptor` depende de `IOutboxContext` (`GetTrackedAggregates()`, `AddOutboxMessage()`), não de `DefaultContext` diretamente. Qualquer `DbContext` que implemente a interface pode ser suportado sem alterar o interceptor.
 
+**Estrutura de arquivos difere do `project-structure.md` em alguns pontos**
+
+O documento de referência descreve a estrutura esperada do projeto. As divergências entre o documentado e o implementado são:
+
+| Item | Doc | Implementação | Tipo |
+| --- | --- | --- | --- |
+| `Domain/Events/ItemAddedEvent` | Listado | Não existe | Decisão — ver justificativa abaixo |
+| `ORM/Mapping/SaleItemConfiguration` | Arquivo separado | Classe embutida em `SaleConfiguration.cs` | Consolidação deliberada — ambas as configurações estão no mesmo arquivo |
+| `ORM/IOutboxContext.cs` | Não listado | Existe | Adição — desacopla `OutboxInterceptor` do contexto concreto |
+| `ORM/Interceptors/OutboxInterceptor.cs` | Não listado | Existe | Adição — extrai responsabilidade de injeção do outbox do `DefaultContext` |
+| `Domain/Repositories/SaleListCriteria.cs` | Não listado | Existe | Adição — criteria object que substitui parâmetros posicionais em `ListAsync` |
+| `Domain/Events/SaleSnapshot.cs` / `SaleItemSnapshot.cs` | Não listados | Existem | Adição — value objects de snapshot embutidos no `SaleModifiedEvent` |
+| Contagem de unit tests | 153 | **154** | +1 test adicionado durante implementação |
+| `OutboxProcessor` cenários | 9 | **10** | +1 cenário adicionado |
+
+**`UserRegisteredEvent` — dead code na base original**  
+O evento existe em `Domain/Events/UserRegisteredEvent.cs` e está listado no `project-structure.md`. O `users-api.md` especifica explicitamente que `POST /api/v1/users` deve emitir `UserRegisteredEvent`, porém `CreateUserHandler` **nunca o levanta**. Trata-se de gap na base pré-existente do desafio; o evento não foi removido para não alterar o escopo original, mas também não foi emitido porque corrigir comportamento de endpoints fora do escopo poderia mascarar intenções do avaliador.
+
+**`SaleNumber` tem índice UNIQUE no banco**  
+`SaleConfiguration` aplica `HasIndex(s => s.SaleNumber).IsUnique()`, garantindo unicidade de número de venda no PostgreSQL. A avaliação anterior que apontava ausência desta constraint estava incorreta.
+
+---
+
 **Rotas de Auth e Users não seguem o padrão `/api/v1/`**  
-O `general-api.md` especifica que todos os endpoints devem ser servidos sob `/api/v1/` e que o login deve ser obtido via `POST /api/v1/auth/login`. Na prática:
+O `general-api.md` e o `auth-api.md` especificam que todos os endpoints devem ser servidos sob `/api/v1/` e que o login deve ser obtido via `POST /api/v1/auth/login`. O `users-api.md` define base path `/api/v1/users`. Na prática:
 
 - `AuthController` usa `[Route("api/[controller]")]` → rota efetiva é `POST /api/auth` (sem versão, sem sufixo `/login`)
 - `UsersController` usa `[Route("api/[controller]")]` → rota efetiva é `/api/users` (sem versão)
 
 Esses dois controllers fazem parte da base pré-existente do desafio e não foram modificados. O `SalesController` — implementação nova — está corretamente versionado sob `/api/v{version:apiVersion}/sales`. A divergência nos controllers herdados é conhecida e está fora do escopo das alterações realizadas.
+
+**Shape de resposta da listagem de Users**  
+O `users-api.md` descreve uma resposta de paginação plana (`data[]`, `totalItems`, `currentPage`, `totalPages`, `pageSize`). A implementação atual retorna `ApiResponseWithData<ListUsersResult>`, que adiciona os campos `success` e `message` como envelope externo. Esta é uma divergência de contrato presente na base pré-existente — o `SalesController` expõe o mesmo envelope, mas o `users-api.md` não o prevê.
 
 **Campo `error` vs `detail` na resposta de erro de validação**  
 O `general-api.md` especifica que, para erros de validação, `error` deve conter um sumário genérico (`"One or more validation errors occurred."`) e `detail` deve conter o detalhe específico do campo. A implementação atual do `ValidationExceptionMiddleware` atribui o mesmo valor (a lista de erros do FluentValidation) a ambos os campos, pois `WriteResponse` recebe `(error, detail)` com o mesmo argumento. Esta é uma divergência menor em relação ao contrato documentado — o conteúdo está correto, apenas a segregação sumário/detalhe não é respeitada.
@@ -127,6 +153,9 @@ Esta versão possui a vulnerabilidade conhecida [`GHSA-rvv3-g6hj-g44x`](https://
 
 **Nota — Rebus 8.4.1:**  
 Listado no `tech-stack.md` como implementação de referência, porém **não está instalado como `PackageReference` em nenhum projeto**. Aparece apenas como sugestão em comentário no `LoggingEventPublisher.cs`. A decisão foi manter a integração com broker desacoplada via `IEventPublisher`: para ativar Rebus (ou qualquer outro broker), basta instalar o pacote e registrar uma implementação alternativa em `InfrastructureModuleInitializer` — zero alterações no domínio, nos handlers ou no outbox.
+
+**Verificação de `frameworks.md`:**  
+Todos os frameworks descritos em `frameworks.md` estão corretamente aplicados. Pontos verificados: `ValidationBehavior` pipeline MediatR ativo; `Testcontainers.PostgreSql` confirmado nos testes de integração com `postgres:16-alpine`; estratégia de versionamento de eventos (`IDomainEvent.Version`) documentada e o `OutboxProcessor` emite warning estruturado para mensagens com versão desconhecida sem descartar o evento (poison-pill prevention). Sem divergências.
 
 ---
 

@@ -55,13 +55,13 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         return (client, token);
     }
 
-    // ── POST /api/sales ────────────────────────────────────────────────────────
+    // ── POST /api/v1/sales ────────────────────────────────────────────────────────
 
-    [Fact(DisplayName = "POST /api/sales returns 201 with correct discount applied")]
+    [Fact(DisplayName = "POST /api/v1/sales returns 201 with correct discount applied")]
     public async Task CreateSale_Returns201_WithDiscountApplied()
     {
         var (client, _) = await AuthenticatedClientAsync();
-        var response = await client.PostAsJsonAsync("/api/sales", DefaultPayload(quantity: 10));
+        var response = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload(quantity: 10));
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
 
@@ -73,40 +73,40 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         data.GetProperty("totalAmount").GetDecimal().Should().Be(440m);
     }
 
-    [Fact(DisplayName = "POST /api/sales response has Location header pointing to GetSaleById route")]
+    [Fact(DisplayName = "POST /api/v1/sales response has Location header pointing to GetSaleById route")]
     public async Task CreateSale_Returns201_WithLocationHeader()
     {
         var (client, _) = await AuthenticatedClientAsync();
-        var response = await client.PostAsJsonAsync("/api/sales", DefaultPayload());
+        var response = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload());
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         response.Headers.Location.Should().NotBeNull();
-        response.Headers.Location!.ToString().Should().ContainEquivalentOf("/api/sales/");
+        response.Headers.Location!.ToString().Should().ContainEquivalentOf("/api/v1/sales/");
     }
 
-    [Fact(DisplayName = "POST /api/sales without auth returns 401")]
+    [Fact(DisplayName = "POST /api/v1/sales without auth returns 401")]
     public async Task CreateSale_WithoutAuth_Returns401()
     {
         var client = _factory.CreateClient();
-        var response = await client.PostAsJsonAsync("/api/sales", DefaultPayload());
+        var response = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload());
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    // ── GET /api/sales/{id} — verifies NO double-wrapping ─────────────────────
+    // ── GET /api/v1/sales/{id} — verifies NO double-wrapping ─────────────────────
 
-    [Fact(DisplayName = "GET /api/sales/{id} returns 200 with data at root level (no double-wrap)")]
+    [Fact(DisplayName = "GET /api/v1/sales/{id} returns 200 with data at root level (no double-wrap)")]
     public async Task GetSale_Returns200_DataAtRootLevel()
     {
         var (client, _) = await AuthenticatedClientAsync();
 
         // Create a sale first
-        var createResponse = await client.PostAsJsonAsync("/api/sales", DefaultPayload(quantity: 4));
+        var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload(quantity: 4));
         createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
         var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
         var saleId = created.GetProperty("data").GetProperty("id").GetString();
 
         // Retrieve it
-        var getResponse = await client.GetAsync($"/api/sales/{saleId}");
+        var getResponse = await client.GetAsync($"/api/v1/sales/{saleId}");
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var body = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
@@ -122,22 +122,22 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         widgetA.GetProperty("discount").GetDecimal().Should().Be(0.10m);
     }
 
-    [Fact(DisplayName = "GET /api/sales/{id} returns 404 for unknown id")]
+    [Fact(DisplayName = "GET /api/v1/sales/{id} returns 404 for unknown id")]
     public async Task GetSale_UnknownId_Returns404()
     {
         var (client, _) = await AuthenticatedClientAsync();
-        var response = await client.GetAsync($"/api/sales/{Guid.NewGuid()}");
+        var response = await client.GetAsync($"/api/v1/sales/{Guid.NewGuid()}");
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    // ── GET /api/sales (list) ──────────────────────────────────────────────────
+    // ── GET /api/v1/sales (list) ──────────────────────────────────────────────────
 
-    [Fact(DisplayName = "GET /api/sales returns 200 with paginated summaries (no double-wrap)")]
+    [Fact(DisplayName = "GET /api/v1/sales returns 200 with paginated summaries (no double-wrap)")]
     public async Task ListSales_Returns200_WithSummaries()
     {
         var (client, _) = await AuthenticatedClientAsync();
 
-        var response = await client.GetAsync("/api/sales?_page=1&_size=5");
+        var response = await client.GetAsync("/api/v1/sales?page=1&size=5");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -146,15 +146,15 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         data.TryGetProperty("currentPage", out _).Should().BeTrue();
     }
 
-    // ── PUT /api/sales/{id} ────────────────────────────────────────────────────
+    // ── PUT /api/v1/sales/{id} ────────────────────────────────────────────────────
 
-    [Fact(DisplayName = "PUT /api/sales/{id} returns 200 with updated data (no double-wrap)")]
+    [Fact(DisplayName = "PUT /api/v1/sales/{id} returns 200 with updated data (no double-wrap)")]
     public async Task UpdateSale_Returns200_WithUpdatedData()
     {
         var (client, _) = await AuthenticatedClientAsync();
 
         // Create
-        var createResponse = await client.PostAsJsonAsync("/api/sales", DefaultPayload(quantity: 4));
+        var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload(quantity: 4));
         var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
         var saleId = created.GetProperty("data").GetProperty("id").GetString();
         var rowVersion = created.GetProperty("data").GetProperty("rowVersion").GetUInt32();
@@ -171,7 +171,7 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
             items = new[] { new { productId = Guid.NewGuid(), productName = "NewWidget", quantity = 10, unitPrice = 100m } }
         };
 
-        var updateResponse = await client.PutAsJsonAsync($"/api/sales/{saleId}", updatePayload);
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/sales/{saleId}", updatePayload);
         var updateRaw = await updateResponse.Content.ReadAsStringAsync();
         updateResponse.StatusCode.Should().Be(HttpStatusCode.OK, $"Response body: {updateRaw}");
 
@@ -183,13 +183,13 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         data.GetProperty("totalAmount").GetDecimal().Should().Be(800m);
     }
 
-    [Fact(DisplayName = "PUT /api/sales/{id} with stale rowVersion returns 409 Conflict")]
+    [Fact(DisplayName = "PUT /api/v1/sales/{id} with stale rowVersion returns 409 Conflict")]
     public async Task UpdateSale_StaleRowVersion_Returns409()
     {
         var (client, _) = await AuthenticatedClientAsync();
 
         // Create
-        var createResponse = await client.PostAsJsonAsync("/api/sales", DefaultPayload(quantity: 4));
+        var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload(quantity: 4));
         var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
         var saleId = created.GetProperty("data").GetProperty("id").GetString();
 
@@ -205,24 +205,24 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
             items = new[] { new { productId = Guid.NewGuid(), productName = "NewWidget", quantity = 5, unitPrice = 50m } }
         };
 
-        var updateResponse = await client.PutAsJsonAsync($"/api/sales/{saleId}", updatePayload);
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/sales/{saleId}", updatePayload);
         updateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
-    // ── PATCH /api/sales/{id}/cancel ──────────────────────────────────────────
+    // ── PATCH /api/v1/sales/{id}/cancel ──────────────────────────────────────────
 
-    [Fact(DisplayName = "PATCH /api/sales/{id}/cancel returns 200 and sale is cancelled")]
+    [Fact(DisplayName = "PATCH /api/v1/sales/{id}/cancel returns 200 and sale is cancelled")]
     public async Task CancelSale_Returns200_SaleIsCancelled()
     {
         var (client, _) = await AuthenticatedClientAsync();
 
         // Create
-        var createResponse = await client.PostAsJsonAsync("/api/sales", DefaultPayload());
+        var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload());
         var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
         var saleId = created.GetProperty("data").GetProperty("id").GetString();
 
         // Cancel
-        var cancelResponse = await client.PatchAsync($"/api/sales/{saleId}/cancel", null);
+        var cancelResponse = await client.PatchAsync($"/api/v1/sales/{saleId}/cancel", null);
         cancelResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var body = await cancelResponse.Content.ReadFromJsonAsync<JsonElement>();
@@ -230,32 +230,32 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         data.TryGetProperty("data", out _).Should().BeFalse("cancel response must NOT be double-wrapped");
 
         // Verify the sale is now cancelled
-        var getResponse = await client.GetAsync($"/api/sales/{saleId}");
+        var getResponse = await client.GetAsync($"/api/v1/sales/{saleId}");
         var getSaleBody = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
         getSaleBody.GetProperty("data").GetProperty("isCancelled").GetBoolean().Should().BeTrue();
     }
 
-    // ── PATCH /api/sales/{id}/items/{itemId}/cancel ───────────────────────────
+    // ── PATCH /api/v1/sales/{id}/items/{itemId}/cancel ───────────────────────────
 
-    [Fact(DisplayName = "PATCH /api/sales/{id}/items/{itemId}/cancel returns 200 and item is cancelled")]
+    [Fact(DisplayName = "PATCH /api/v1/sales/{id}/items/{itemId}/cancel returns 200 and item is cancelled")]
     public async Task CancelSaleItem_Returns200_ItemIsCancelled()
     {
         var (client, _) = await AuthenticatedClientAsync();
 
         // Create a sale with two items
-        var createResponse = await client.PostAsJsonAsync("/api/sales", DefaultPayload(quantity: 5));
+        var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload(quantity: 5));
         createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
         var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
         var saleId = created.GetProperty("data").GetProperty("id").GetString();
 
         // Retrieve to get item IDs
-        var getResponse = await client.GetAsync($"/api/sales/{saleId}");
+        var getResponse = await client.GetAsync($"/api/v1/sales/{saleId}");
         var saleBody = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
         var items = saleBody.GetProperty("data").GetProperty("items").EnumerateArray().ToList();
         var itemId = items[0].GetProperty("id").GetString();
 
         // Cancel the first item
-        var cancelResponse = await client.PatchAsync($"/api/sales/{saleId}/items/{itemId}/cancel", null);
+        var cancelResponse = await client.PatchAsync($"/api/v1/sales/{saleId}/items/{itemId}/cancel", null);
         cancelResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var body = await cancelResponse.Content.ReadFromJsonAsync<JsonElement>();
@@ -263,56 +263,56 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         data.GetProperty("isCancelled").GetBoolean().Should().BeTrue();
     }
 
-    // ── DELETE /api/sales/{id} ────────────────────────────────────────────────
+    // ── DELETE /api/v1/sales/{id} ────────────────────────────────────────────────
 
-    [Fact(DisplayName = "DELETE /api/sales/{id} returns 200 and sale is cancelled")]
+    [Fact(DisplayName = "DELETE /api/v1/sales/{id} returns 200 and sale is cancelled")]
     public async Task DeleteSale_Returns200_SaleIsCancelled()
     {
         var (client, _) = await AuthenticatedClientAsync();
 
-        var createResponse = await client.PostAsJsonAsync("/api/sales", DefaultPayload());
+        var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload());
         var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
         var saleId = created.GetProperty("data").GetProperty("id").GetString();
 
-        var deleteResponse = await client.DeleteAsync($"/api/sales/{saleId}");
+        var deleteResponse = await client.DeleteAsync($"/api/v1/sales/{saleId}");
         deleteResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var getResponse = await client.GetAsync($"/api/sales/{saleId}");
+        var getResponse = await client.GetAsync($"/api/v1/sales/{saleId}");
         var body = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("data").GetProperty("isCancelled").GetBoolean().Should().BeTrue();
     }
 
-    [Fact(DisplayName = "DELETE /api/sales/{id} is idempotent — second call returns 200")]
+    [Fact(DisplayName = "DELETE /api/v1/sales/{id} is idempotent — second call returns 200")]
     public async Task DeleteSale_CalledTwice_BothReturn200()
     {
         var (client, _) = await AuthenticatedClientAsync();
 
-        var createResponse = await client.PostAsJsonAsync("/api/sales", DefaultPayload());
+        var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload());
         var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
         var saleId = created.GetProperty("data").GetProperty("id").GetString();
 
-        var first  = await client.DeleteAsync($"/api/sales/{saleId}");
-        var second = await client.DeleteAsync($"/api/sales/{saleId}");
+        var first  = await client.DeleteAsync($"/api/v1/sales/{saleId}");
+        var second = await client.DeleteAsync($"/api/v1/sales/{saleId}");
 
         first.StatusCode.Should().Be(HttpStatusCode.OK);
         second.StatusCode.Should().Be(HttpStatusCode.OK, "DELETE must be idempotent");
     }
 
-    // ── GET /api/sales?isCancelled=true ───────────────────────────────────────
+    // ── GET /api/v1/sales?isCancelled=true ───────────────────────────────────────
 
-    [Fact(DisplayName = "GET /api/sales with isCancelled=true filter returns only cancelled sales")]
+    [Fact(DisplayName = "GET /api/v1/sales with isCancelled=true filter returns only cancelled sales")]
     public async Task ListSales_WithCancelledFilter_ReturnsOnlyCancelledSales()
     {
         var (client, _) = await AuthenticatedClientAsync();
 
         // Create and immediately cancel one sale
-        var createResponse = await client.PostAsJsonAsync("/api/sales", DefaultPayload(quantity: 5));
+        var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload(quantity: 5));
         var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
         var saleId = created.GetProperty("data").GetProperty("id").GetString();
-        await client.PatchAsync($"/api/sales/{saleId}/cancel", null);
+        await client.PatchAsync($"/api/v1/sales/{saleId}/cancel", null);
 
         // Filter by isCancelled=true
-        var listResponse = await client.GetAsync("/api/sales?_page=1&_size=50&isCancelled=true");
+        var listResponse = await client.GetAsync("/api/v1/sales?page=1&size=50&isCancelled=true");
         listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var body = await listResponse.Content.ReadFromJsonAsync<JsonElement>();

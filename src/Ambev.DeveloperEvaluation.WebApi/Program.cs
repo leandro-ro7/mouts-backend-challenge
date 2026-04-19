@@ -5,8 +5,8 @@ using Ambev.DeveloperEvaluation.Common.Security;
 using Ambev.DeveloperEvaluation.Common.Validation;
 using Ambev.DeveloperEvaluation.IoC;
 using Ambev.DeveloperEvaluation.ORM;
-using Ambev.DeveloperEvaluation.Infrastructure.Messaging;
 using Ambev.DeveloperEvaluation.WebApi.Middleware;
+using Asp.Versioning;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -26,6 +26,13 @@ public class Program
 
             builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
+
+            builder.Services.AddApiVersioning(opt =>
+            {
+                opt.DefaultApiVersion = new ApiVersion(1, 0);
+                opt.AssumeDefaultVersionWhenUnspecified = true;
+                opt.ReportApiVersions = true;
+            }).AddMvc();
 
             builder.AddBasicHealthChecks();
             builder.Services.AddSwaggerGen();
@@ -52,8 +59,6 @@ public class Program
             });
 
             builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
-
-            builder.Services.AddHostedService<OutboxProcessor>();
 
             var app = builder.Build();
 

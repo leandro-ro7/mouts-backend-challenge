@@ -6,6 +6,7 @@ using Ambev.DeveloperEvaluation.Application.Sales.GetSale;
 using Ambev.DeveloperEvaluation.Application.Sales.ListSales;
 using Ambev.DeveloperEvaluation.Application.Sales.UpdateSale;
 using Ambev.DeveloperEvaluation.WebApi.Common;
+using Asp.Versioning;
 using AutoMapper;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -14,7 +15,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace Ambev.DeveloperEvaluation.WebApi.Features.Sales;
 
 [ApiController]
-[Route("api/[controller]")]
+[ApiVersion("1.0")]
+[Route("api/v{version:apiVersion}/[controller]")]
 [Authorize]
 public class SalesController : BaseController
 {
@@ -40,9 +42,9 @@ public class SalesController : BaseController
     [HttpGet]
     [ProducesResponseType(typeof(ApiResponseWithData<ListSalesResult>), StatusCodes.Status200OK)]
     public async Task<IActionResult> ListSales(
-        [FromQuery] int _page = 1,
-        [FromQuery] int _size = 10,
-        [FromQuery] string? _order = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int size = 10,
+        [FromQuery] string? order = null,
         [FromQuery] string? customerName = null,
         [FromQuery] DateTime? dateFrom = null,
         [FromQuery] DateTime? dateTo = null,
@@ -51,7 +53,7 @@ public class SalesController : BaseController
     {
         var query = new ListSalesQuery
         {
-            Page = _page, Size = _size, Order = _order,
+            Page = page, Size = size, Order = order,
             CustomerName = customerName,
             DateFrom = dateFrom, DateTo = dateTo,
             IsCancelled = isCancelled

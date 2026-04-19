@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 namespace Ambev.DeveloperEvaluation.Infrastructure.Messaging;
@@ -32,10 +33,7 @@ public class OutboxProcessor : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<OutboxProcessor> _logger;
-
-    private static readonly TimeSpan PollingInterval = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan LockDuration = TimeSpan.FromSeconds(30);
-    private const int BatchSize = 50;
+    private readonly OutboxOptions _options;
 
     // Built once from the Domain assembly — maps FullName → Type, no version/culture fragility.
     private static readonly IReadOnlyDictionary<string, Type> EventTypeRegistry =
@@ -44,14 +42,20 @@ public class OutboxProcessor : BackgroundService
             .Where(t => typeof(IDomainEvent).IsAssignableFrom(t) && t is { IsInterface: false, IsAbstract: false })
             .ToDictionary(t => t.FullName!, t => t);
 
-    public OutboxProcessor(IServiceScopeFactory scopeFactory, ILogger<OutboxProcessor> logger)
+    public OutboxProcessor(
+        IServiceScopeFactory scopeFactory,
+        ILogger<OutboxProcessor> logger,
+        IOptions<OutboxOptions> options)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _options = options.Value;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var pollingInterval = TimeSpan.FromSeconds(_options.PollingIntervalSeconds);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -63,7 +67,7 @@ public class OutboxProcessor : BackgroundService
                 _logger.LogError(ex, "Outbox processor encountered an unhandled error.");
             }
 
-            await Task.Delay(PollingInterval, stoppingToken);
+            await Task.Delay(pollingInterval, stoppingToken);
         }
     }
 
@@ -125,12 +129,13 @@ public class OutboxProcessor : BackgroundService
     /// InMemory (tests): tracked-entity approach — safe because the InMemory provider is
     ///   always single-instance and has no concurrent writers.
     /// </summary>
-    private static async Task<List<OutboxMessage>> ClaimBatchAsync(
+    private async Task<List<OutboxMessage>> ClaimBatchAsync(
         DefaultContext db, CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
-        var lockExpiry = now.Add(LockDuration);
+        var lockExpiry = now.Add(TimeSpan.FromSeconds(_options.LockDurationSeconds));
         var claimId = Guid.NewGuid();
+        var batchSize = _options.BatchSize;
 
         if (db.Database.IsNpgsql())
         {
@@ -145,7 +150,7 @@ public class OutboxProcessor : BackgroundService
                     WHERE "ProcessedAt" IS NULL
                       AND ("LockedUntil" IS NULL OR "LockedUntil" < {now})
                     ORDER BY "OccurredAt"
-                    LIMIT {BatchSize}
+                    LIMIT {batchSize}
                     FOR UPDATE SKIP LOCKED
                 )
                 """, cancellationToken);
@@ -162,7 +167,7 @@ public class OutboxProcessor : BackgroundService
             .Where(m => m.ProcessedAt == null
                      && (m.LockedUntil == null || m.LockedUntil < now))
             .OrderBy(m => m.OccurredAt)
-            .Take(BatchSize)
+            .Take(batchSize)
             .ToListAsync(cancellationToken);
 
         if (batch.Count == 0)

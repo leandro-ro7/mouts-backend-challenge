@@ -84,6 +84,11 @@ public class Sale : AggregateRoot
         var item = new SaleItem(Id, productId, productName, quantity, unitPrice);
         _items.Add(item);
         RecalculateTotal();
+
+        RaiseDomainEvent(new ItemAddedEvent(
+            Id, item.Id, item.ProductId, item.ProductName,
+            item.Quantity, item.UnitPrice, item.Discount.Value, item.TotalAmount));
+
         return item;
     }
 
@@ -98,9 +103,17 @@ public class Sale : AggregateRoot
         if (item.IsCancelled)
             throw new DomainException("Cannot update a cancelled item.");
 
+        var previousQuantity = item.Quantity;
+        var previousUnitPrice = item.UnitPrice;
+
         item.Update(quantity, unitPrice);
         RecalculateTotal();
         UpdatedAt = DateTime.UtcNow;
+
+        RaiseDomainEvent(new ItemModifiedEvent(
+            Id, item.Id, item.ProductId, item.ProductName,
+            previousQuantity, previousUnitPrice,
+            item.Quantity, item.UnitPrice, item.Discount.Value, item.TotalAmount));
     }
 
     public SaleItem CancelItem(Guid itemId)
@@ -205,10 +218,15 @@ public class Sale : AggregateRoot
         UpdatedAt = DateTime.UtcNow;
         RowVersion++; // single increment for the entire PUT operation
 
+        foreach (var item in _items)
+            RaiseDomainEvent(new ItemAddedEvent(
+                Id, item.Id, item.ProductId, item.ProductName,
+                item.Quantity, item.UnitPrice, item.Discount.Value, item.TotalAmount));
+
         RaiseDomainEvent(evt);
     }
 
-    public IReadOnlyList<SaleItem> ReplaceItems(IEnumerable<NewSaleItemSpec> newItems)
+    internal IReadOnlyList<SaleItem> ReplaceItems(IEnumerable<NewSaleItemSpec> newItems)
     {
         if (IsCancelled)
             throw new DomainException("Cannot update items of a cancelled sale.");

@@ -22,12 +22,21 @@ public class InfrastructureModuleInitializer : IModuleInitializer
         builder.Services.AddScoped<IUserRepository, UserRepository>();
         builder.Services.AddScoped<ISaleRepository, SaleRepository>();
 
+        // Outbox options — configurable via appsettings.json "Outbox" section
+        builder.Services.Configure<OutboxOptions>(
+            builder.Configuration.GetSection(OutboxOptions.SectionName));
+
         // Event publisher — Rebus with InMemory transport (swap for RabbitMQ/ASB via config only)
+        // LoggingEventPublisher is available as a no-broker alternative for dev/test environments.
         builder.Services.AddScoped<IEventPublisher, RebusEventPublisher>();
 
         builder.Services.AddRebus(configure => configure
             .Transport(t => t.UseInMemoryTransport(new InMemNetwork(), "developer-evaluation"))
             .Routing(r => r.TypeBased())
         );
+
+        // Outbox background services
+        builder.Services.AddHostedService<OutboxProcessor>();
+        builder.Services.AddHostedService<OutboxCleanupJob>();
     }
 }

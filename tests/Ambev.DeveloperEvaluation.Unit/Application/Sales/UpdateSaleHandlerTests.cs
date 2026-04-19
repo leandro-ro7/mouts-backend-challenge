@@ -87,20 +87,24 @@ public class UpdateSaleHandlerTests
         sale.Items.Should().NotContain(i => i.ProductName == "Product"); // old item gone
     }
 
-    [Fact(DisplayName = "ReplaceItems directly sets correct discounts on new items")]
-    public void ReplaceItems_Domain_SetsCorrectDiscounts()
+    [Fact(DisplayName = "UpdateFull sets correct discounts on new items")]
+    public void UpdateFull_Domain_SetsCorrectDiscountsOnNewItems()
     {
         var sale = Sale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
         sale.AddItem(Guid.NewGuid(), "Old", 5, 100m);
         sale.ClearDomainEvents();
 
-        sale.ReplaceItems(new[]
-        {
-            new NewSaleItemSpec(Guid.NewGuid(), "P1", 4, 10m),
-            new NewSaleItemSpec(Guid.NewGuid(), "P2", 15, 20m)
-        });
+        sale.UpdateFull(
+            sale.CustomerId, sale.CustomerName,
+            sale.BranchId, sale.BranchName,
+            sale.SaleDate,
+            new[]
+            {
+                new NewSaleItemSpec(Guid.NewGuid(), "P1", 4, 10m),
+                new NewSaleItemSpec(Guid.NewGuid(), "P2", 15, 20m)
+            });
 
-        // ReplaceItems now physically removes old items — only 2 new items remain
+        // UpdateFull replaces items — only 2 new items remain
         sale.Items.Count.Should().Be(2);
         sale.Items.Should().Contain(i => i.Discount.Value == 0.10m); // P1 qty=4
         sale.Items.Should().Contain(i => i.Discount.Value == 0.20m); // P2 qty=15
@@ -201,5 +205,29 @@ public class UpdateSaleHandlerTests
 
         sale.RowVersion.Should().Be(initialVersion + 1,
             "UpdateFull is one logical mutation — exactly one RowVersion increment");
+    }
+
+    [Fact(DisplayName = "When repository throws ConcurrencyException (from DbUpdateConcurrencyException) Then handler propagates it")]
+    public async Task Handle_RepositoryThrowsConcurrencyException_Propagates()
+    {
+        // Arrange: RowVersion matches (application-level check passes), but EF Core detects
+        // a concurrent write at DB level — repository wraps DbUpdateConcurrencyException as ConcurrencyException.
+        var sale = CreateSaleWithItem();
+        var command = ValidCommand(sale.Id, rowVersion: sale.RowVersion); // matches → passes app-level check
+
+        _repository.GetByIdAsync(sale.Id, Arg.Any<CancellationToken>()).Returns(sale);
+        _repository.UpdateAsync(Arg.Any<Sale>(), Arg.Any<CancellationToken>())
+            .Returns<Sale>(_ => throw new ConcurrencyException(
+                $"Sale {sale.Id} was concurrently modified. Reload and retry."));
+
+        // Act
+        var act = async () => await _handler.Handle(command, CancellationToken.None);
+
+        // Assert: handler must propagate (not swallow) the ConcurrencyException
+        await act.Should().ThrowAsync<ConcurrencyException>()
+            .WithMessage("*concurrently modified*");
+
+        // UpdateAsync WAS called — this is the TOCTOU path (passed app-level check, failed at DB)
+        await _repository.Received(1).UpdateAsync(Arg.Any<Sale>(), Arg.Any<CancellationToken>());
     }
 }

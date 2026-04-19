@@ -1,220 +1,127 @@
 [Back to README](../README.md)
 
-### Users
+## Users API
 
-#### GET /users
-- Description: Retrieve a list of all users
-- Query Parameters:
-  - `_page` (optional): Page number for pagination (default: 1)
-  - `_size` (optional): Number of items per page (default: 10)
-  - `_order` (optional): Ordering of results (e.g., "username asc, email desc")
-- Response: 
-  ```json
-  {
-    "data": [
-      {
-        "id": "integer",
-        "email": "string",
-        "username": "string",
-        "password": "string",
-        "name": {
-          "firstname": "string",
-          "lastname": "string"
-        },
-        "address": {
-          "city": "string",
-          "street": "string",
-          "number": "integer",
-          "zipcode": "string",
-          "geolocation": {
-            "lat": "string",
-            "long": "string"
-          }
-        },
-        "phone": "string",
-        "status": "string (enum: Active, Inactive, Suspended)",
-        "role": "string (enum: Customer, Manager, Admin)"
-      }
-    ],
-    "totalItems": "integer",
-    "currentPage": "integer",
-    "totalPages": "integer"
-  }
-  ```
+Base path: `/api/v1/users`. All endpoints require `Authorization: Bearer <token>`.
 
-#### POST /users
-- Description: Add a new user
-- Request Body:
-  ```json
-  {
-    "email": "string",
-    "username": "string",
-    "password": "string",
-    "name": {
-      "firstname": "string",
-      "lastname": "string"
-    },
-    "address": {
-      "city": "string",
-      "street": "string",
-      "number": "integer",
-      "zipcode": "string",
-      "geolocation": {
-        "lat": "string",
-        "long": "string"
-      }
-    },
-    "phone": "string",
-    "status": "string (enum: Active, Inactive, Suspended)",
-    "role": "string (enum: Customer, Manager, Admin)"
-  }
-  ```
-- Response: 
-  ```json
-  {
-    "id": "integer",
-    "email": "string",
-    "username": "string",
-    "password": "string",
-    "name": {
-      "firstname": "string",
-      "lastname": "string"
-    },
-    "address": {
-      "city": "string",
-      "street": "string",
-      "number": "integer",
-      "zipcode": "string",
-      "geolocation": {
-        "lat": "string",
-        "long": "string"
-      }
-    },
-    "phone": "string",
-    "status": "string (enum: Active, Inactive, Suspended)",
-    "role": "string (enum: Customer, Manager, Admin)"
-  }
-  ```
+---
 
-#### GET /users/{id}
-- Description: Retrieve a specific user by ID
-- Path Parameters:
-  - `id`: User ID
-- Response: 
-  ```json
-  {
-    "id": "integer",
-    "email": "string",
-    "username": "string",
-    "password": "string",
-    "name": {
-      "firstname": "string",
-      "lastname": "string"
-    },
-    "address": {
-      "city": "string",
-      "street": "string",
-      "number": "integer",
-      "zipcode": "string",
-      "geolocation": {
-        "lat": "string",
-        "long": "string"
-      }
-    },
-    "phone": "string",
-    "status": "string (enum: Active, Inactive, Suspended)",
-    "role": "string (enum: Customer, Manager, Admin)"
-  }
-  ```
+### GET /api/v1/users
 
-#### PUT /users/{id}
-- Description: Update a specific user
-- Path Parameters:
-  - `id`: User ID
-- Request Body:
-  ```json
-  {
-    "email": "string",
-    "username": "string",
-    "password": "string",
-    "name": {
-      "firstname": "string",
-      "lastname": "string"
-    },
-    "address": {
-      "city": "string",
-      "street": "string",
-      "number": "integer",
-      "zipcode": "string",
-      "geolocation": {
-        "lat": "string",
-        "long": "string"
-      }
-    },
-    "phone": "string",
-    "status": "string (enum: Active, Inactive, Suspended)",
-    "role": "string (enum: Customer, Manager, Admin)"
-  }
-  ```
-- Response: 
-  ```json
-  {
-    "id": "integer",
-    "email": "string",
-    "username": "string",
-    "password": "string",
-    "name": {
-      "firstname": "string",
-      "lastname": "string"
-    },
-    "address": {
-      "city": "string",
-      "street": "string",
-      "number": "integer",
-      "zipcode": "string",
-      "geolocation": {
-        "lat": "string",
-        "long": "string"
-      }
-    },
-    "phone": "string",
-    "status": "string (enum: Active, Inactive, Suspended)",
-    "role": "string (enum: Customer, Manager, Admin)"
-  }
-  ```
+Retrieves a paginated list of users.
 
-#### DELETE /users/{id}
-- Description: Delete a specific user
-- Path Parameters:
-  - `id`: User ID
-- Response: 
-  ```json
-  {
-    "id": "integer",
-    "email": "string",
-    "username": "string",
-    "password": "string",
-    "name": {
-      "firstname": "string",
-      "lastname": "string"
-    },
-    "address": {
-      "city": "string",
-      "street": "string",
-      "number": "integer",
-      "zipcode": "string",
-      "geolocation": {
-        "lat": "string",
-        "long": "string"
-      }
-    },
-    "phone": "string",
-    "status": "string (enum: Active, Inactive, Suspended)",
-    "role": "string (enum: Customer, Manager, Admin)"
-  }
-  ```
+Query parameters: `page` (default: `1`), `size` (default: `10`), `order` (optional, e.g. `username asc`).
+
+Response `200 OK`:
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "email": "string",
+      "username": "string",
+      "phone": "string",
+      "status": "Active | Inactive | Suspended",
+      "role": "Customer | Manager | Admin",
+      "createdAt": "datetime"
+    }
+  ],
+  "totalItems": 10,
+  "currentPage": 1,
+  "totalPages": 1,
+  "hasNextPage": false,
+  "hasPreviousPage": false
+}
+```
+
+---
+
+### POST /api/v1/users
+
+Creates a new user account. Emits `UserRegisteredEvent`.
+
+Request body:
+
+```json
+{
+  "email": "string",
+  "username": "string",
+  "password": "string",
+  "phone": "string",
+  "status": "Active | Inactive | Suspended",
+  "role": "Customer | Manager | Admin"
+}
+```
+
+Response `201 Created`:
+
+```json
+{
+  "id": "uuid",
+  "email": "string",
+  "username": "string",
+  "phone": "string",
+  "status": "string",
+  "role": "string",
+  "createdAt": "datetime"
+}
+```
+
+---
+
+### GET /api/v1/users/{id}
+
+Retrieves a specific user by UUID. Returns `404` if the user does not exist.
+
+Response `200 OK`:
+
+```json
+{
+  "id": "uuid",
+  "email": "string",
+  "username": "string",
+  "phone": "string",
+  "status": "string",
+  "role": "string",
+  "createdAt": "datetime"
+}
+```
+
+---
+
+### PUT /api/v1/users/{id}
+
+Updates a user's profile. Returns `404` if the user does not exist.
+
+Request body:
+
+```json
+{
+  "email": "string",
+  "username": "string",
+  "phone": "string",
+  "status": "Active | Inactive | Suspended",
+  "role": "Customer | Manager | Admin"
+}
+```
+
+Response `200 OK` — same schema as `GET /api/v1/users/{id}`.
+
+---
+
+### DELETE /api/v1/users/{id}
+
+Deletes a user account. Returns `404` if the user does not exist.
+
+Response `200 OK`:
+
+```json
+{ "success": true }
+```
+
 <br/>
 <div style="display: flex; justify-content: space-between;">
-  <a href="./carts-api.md">Previous: Carts API</a>
+  <a href="./sales-api.md">Previous: Sales API</a>
   <a href="./auth-api.md">Next: Auth API</a>
 </div>

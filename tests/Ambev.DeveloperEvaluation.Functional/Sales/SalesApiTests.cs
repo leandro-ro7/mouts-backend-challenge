@@ -209,10 +209,10 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         updateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
-    // ── PATCH /api/v1/sales/{id}/cancel ──────────────────────────────────────────
+    // ── DELETE /api/v1/sales/{id} (soft-cancel, idempotent) ──────────────────────
 
-    [Fact(DisplayName = "PATCH /api/v1/sales/{id}/cancel returns 200 and sale is cancelled")]
-    public async Task CancelSale_Returns200_SaleIsCancelled()
+    [Fact(DisplayName = "DELETE /api/v1/sales/{id} returns 200 and sale is soft-cancelled")]
+    public async Task DeleteSale_Returns200_SaleIsSoftCancelled()
     {
         var (client, _) = await AuthenticatedClientAsync();
 
@@ -221,18 +221,29 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
         var saleId = created.GetProperty("data").GetProperty("id").GetString();
 
-        // Cancel
-        var cancelResponse = await client.PatchAsync($"/api/v1/sales/{saleId}/cancel", null);
-        cancelResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var body = await cancelResponse.Content.ReadFromJsonAsync<JsonElement>();
-        body.TryGetProperty("data", out var data).Should().BeTrue();
-        data.TryGetProperty("data", out _).Should().BeFalse("cancel response must NOT be double-wrapped");
+        // Delete (soft-cancel)
+        var deleteResponse = await client.DeleteAsync($"/api/v1/sales/{saleId}");
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // Verify the sale is now cancelled
         var getResponse = await client.GetAsync($"/api/v1/sales/{saleId}");
         var getSaleBody = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
         getSaleBody.GetProperty("data").GetProperty("isCancelled").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact(DisplayName = "DELETE /api/v1/sales/{id} is idempotent — second call returns 200")]
+    public async Task DeleteSale_SecondCall_IsIdempotent()
+    {
+        var (client, _) = await AuthenticatedClientAsync();
+
+        var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload());
+        var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var saleId = created.GetProperty("data").GetProperty("id").GetString();
+
+        await client.DeleteAsync($"/api/v1/sales/{saleId}");
+        var secondDelete = await client.DeleteAsync($"/api/v1/sales/{saleId}");
+
+        secondDelete.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     // ── PATCH /api/v1/sales/{id}/items/{itemId}/cancel ───────────────────────────
@@ -309,7 +320,7 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload(quantity: 5));
         var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
         var saleId = created.GetProperty("data").GetProperty("id").GetString();
-        await client.PatchAsync($"/api/v1/sales/{saleId}/cancel", null);
+        await client.DeleteAsync($"/api/v1/sales/{saleId}");
 
         // Filter by isCancelled=true
         var listResponse = await client.GetAsync("/api/v1/sales?page=1&size=50&isCancelled=true");

@@ -6,6 +6,7 @@ using Ambev.DeveloperEvaluation.ORM.Outbox;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -48,7 +49,7 @@ public class OutboxProcessorTests : IDisposable
     private OutboxProcessor CreateProcessor() =>
         new(_scopeFactory, NullLogger<OutboxProcessor>.Instance, DefaultOptions);
 
-    private async Task SeedOutboxAsync(string eventType, string payload, DateTime? lockedUntil = null)
+    private async Task SeedOutboxAsync(string eventType, string payload, DateTime? lockedUntil = null, int eventVersion = 1)
     {
         _db.OutboxMessages.Add(new OutboxMessage
         {
@@ -56,7 +57,8 @@ public class OutboxProcessorTests : IDisposable
             EventType = eventType,
             Payload = payload,
             OccurredAt = DateTime.UtcNow,
-            LockedUntil = lockedUntil
+            LockedUntil = lockedUntil,
+            EventVersion = eventVersion
         });
         await _db.SaveChangesAsync();
     }
@@ -158,6 +160,28 @@ public class OutboxProcessorTests : IDisposable
         msg.LockedUntil.Should().BeNull("lock released for next poll to retry");
     }
 
+    [Fact(DisplayName = "Malformed JSON payload: marked processed permanently, never retried")]
+    public async Task MalformedJsonPayload_MarkedProcessedPermanently_NotRetried()
+    {
+        // Seed a message whose payload is syntactically invalid JSON — can never be deserialized.
+        await SeedOutboxAsync(typeof(SaleCreatedEvent).FullName!, "NOT_VALID_JSON{{{{");
+
+        var processor = CreateProcessor();
+        await processor.ProcessBatchPublicAsync(CancellationToken.None);
+
+        // Must NOT be published — deserialization failed before PublishAsync was called.
+        await _publisher.DidNotReceive().PublishAsync(Arg.Any<IDomainEvent>(), Arg.Any<CancellationToken>());
+
+        var msg = await _db.OutboxMessages.SingleAsync();
+        msg.ProcessedAt.Should().NotBeNull("malformed payload is permanently unprocessable — must be marked done");
+        msg.LockedUntil.Should().BeNull("lock must be cleared");
+
+        // Second poll must not retry (ProcessedAt is set).
+        _publisher.ClearReceivedCalls();
+        await processor.ProcessBatchPublicAsync(CancellationToken.None);
+        await _publisher.DidNotReceive().PublishAsync(Arg.Any<IDomainEvent>(), Arg.Any<CancellationToken>());
+    }
+
     /// <summary>
     /// At-least-once guarantee: if the processor crashes (or is killed) after PublishAsync succeeds
     /// but before ProcessedAt is written, the message must be retried on the next poll.
@@ -220,6 +244,45 @@ public class OutboxProcessorTests : IDisposable
         // Second poll — must NOT dispatch again
         await processor.ProcessBatchPublicAsync(CancellationToken.None);
         await _publisher.DidNotReceive().PublishAsync(Arg.Any<IDomainEvent>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// EventVersion stored in OutboxMessage (written at aggregate-save time) must be compared
+    /// against the deserialized event's current Version. A mismatch means a schema upgrade
+    /// happened after the message was written — the processor logs a structured warning so
+    /// operators can detect stale messages and verify backwards compatibility.
+    /// The message is still dispatched because the schema change may be additive/compatible.
+    /// </summary>
+    [Fact(DisplayName = "Version mismatch: logs warning but still dispatches the message")]
+    public async Task VersionMismatch_LogsWarningAndStillDispatches()
+    {
+        // Seed with EventVersion=99 to simulate a message written with a future/wrong schema version.
+        // SaleCreatedEvent.Version == 1, so 99 != 1 → mismatch.
+        var eventFullName = typeof(SaleCreatedEvent).FullName!;
+        var payload = """{"SaleId":"00000000-0000-0000-0000-000000000001","SaleNumber":"S1","CustomerId":"00000000-0000-0000-0000-000000000002","CustomerName":"C","BranchId":"00000000-0000-0000-0000-000000000003","BranchName":"B1","SaleDate":"2025-01-01T00:00:00Z","TotalAmount":0,"Items":[],"OccurredAt":"2025-01-01T00:00:00Z","Version":99}""";
+        await SeedOutboxAsync(eventFullName, payload, eventVersion: 99);
+
+        var logger = Substitute.For<ILogger<OutboxProcessor>>();
+        var processor = new OutboxProcessor(_scopeFactory, logger, DefaultOptions);
+
+        await processor.ProcessBatchPublicAsync(CancellationToken.None);
+
+        // Message must still be dispatched despite the mismatch
+        await _publisher.Received(1).PublishAsync(
+            Arg.Is<IDomainEvent>(e => e is SaleCreatedEvent),
+            Arg.Any<CancellationToken>());
+
+        // A LogWarning call must have been made with the version mismatch details
+        logger.Received().Log(
+            LogLevel.Warning,
+            Arg.Any<EventId>(),
+            Arg.Is<object>(o => o.ToString()!.Contains("version mismatch") || o.ToString()!.Contains("EventVersion")),
+            Arg.Any<Exception?>(),
+            Arg.Any<Func<object, Exception?, string>>());
+
+        // Message must be marked processed
+        var msg = await _db.OutboxMessages.SingleAsync();
+        msg.ProcessedAt.Should().NotBeNull("message was dispatched despite version mismatch");
     }
 
     public void Dispose()

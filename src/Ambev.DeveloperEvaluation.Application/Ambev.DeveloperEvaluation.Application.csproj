@@ -3,6 +3,11 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- NU1903: AutoMapper 13.0.1 — advisory GHSA-rvv3-g6hj-g44x (high severity).
+         No patched 13.x release confirmed compatible with .NET 8 at time of writing.
+         Suppression is intentional and tracked. Removal criteria: upgrade to a version
+         that closes GHSA-rvv3-g6hj-g44x and passes all existing tests without API breaks. -->
+    <NoWarn>$(NoWarn);NU1903</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

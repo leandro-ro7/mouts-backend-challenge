@@ -16,11 +16,21 @@ public class SaleConfiguration : IEntityTypeConfiguration<Sale>
         builder.Property(s => s.SaleNumber).IsRequired().HasMaxLength(30);
         builder.HasIndex(s => s.SaleNumber).IsUnique();
 
+        // Nullable idempotency key — unique when present, ignored when null.
+        builder.Property(s => s.IdempotencyKey).HasColumnType("uuid");
+        builder.HasIndex(s => s.IdempotencyKey).IsUnique().HasFilter("\"IdempotencyKey\" IS NOT NULL");
+
         builder.Property(s => s.SaleDate).IsRequired();
 
         // External Identities — plain columns, no FK to User or Branch domains
         builder.Property(s => s.CustomerId).IsRequired();
         builder.Property(s => s.CustomerName).IsRequired().HasMaxLength(150);
+        // GIN trigram index supports case-insensitive ILIKE with wildcard prefix (%value%).
+        // Requires pg_trgm extension (enabled in the corresponding migration).
+        builder.HasIndex(s => s.CustomerName)
+            .HasMethod("gin")
+            .HasOperators("gin_trgm_ops")
+            .HasDatabaseName("ix_sales_customername_trgm");
         builder.Property(s => s.BranchId).IsRequired();
         builder.Property(s => s.BranchName).IsRequired().HasMaxLength(150);
 

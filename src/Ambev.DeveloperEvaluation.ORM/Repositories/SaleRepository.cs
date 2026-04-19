@@ -35,6 +35,13 @@ public class SaleRepository : ISaleRepository
             .FirstOrDefaultAsync(s => s.SaleNumber == saleNumber, cancellationToken);
     }
 
+    public async Task<Sale?> GetByIdempotencyKeyAsync(Guid key, CancellationToken cancellationToken = default)
+    {
+        return await _context.Sales
+            .Include(s => s.Items)
+            .FirstOrDefaultAsync(s => s.IdempotencyKey == key, cancellationToken);
+    }
+
     public async Task<(IEnumerable<Sale> Items, int TotalCount)> ListAsync(
         int page, int size, string? order = null,
         string? customerName = null,
@@ -48,10 +55,9 @@ public class SaleRepository : ISaleRepository
 
         if (!string.IsNullOrWhiteSpace(customerName))
         {
-            // ToLower() on both sides translates to LOWER(col) LIKE '%...%' in PostgreSQL,
-            // providing case-insensitive matching without requiring a custom collation.
-            var lowerName = customerName.ToLower();
-            query = query.Where(s => s.CustomerName.ToLower().Contains(lowerName));
+            // EF.Functions.ILike translates to PostgreSQL ILIKE, which is case-insensitive and
+            // can use a GIN index with gin_trgm_ops for wildcard-prefix patterns (%value%).
+            query = query.Where(s => EF.Functions.ILike(s.CustomerName, $"%{customerName}%"));
         }
 
         if (dateFrom.HasValue)

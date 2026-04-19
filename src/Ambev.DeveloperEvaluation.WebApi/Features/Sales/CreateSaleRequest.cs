@@ -2,6 +2,11 @@ namespace Ambev.DeveloperEvaluation.WebApi.Features.Sales;
 
 public class CreateSaleRequest
 {
+    /// <summary>
+    /// Optional idempotency key. Supply a client-generated UUID to guarantee at-most-once
+    /// creation — retries with the same key return the original sale without creating a duplicate.
+    /// </summary>
+    public Guid? IdempotencyKey { get; set; }
     public Guid CustomerId { get; set; }
     public string CustomerName { get; set; } = string.Empty;
     public Guid BranchId { get; set; }

@@ -45,7 +45,8 @@ public class DefaultContext : DbContext
                 // The OutboxProcessor resolves the type via its registry using this key.
                 EventType = domainEvent.GetType().FullName!,
                 Payload = JsonSerializer.Serialize(domainEvent, domainEvent.GetType()),
-                OccurredAt = domainEvent.OccurredAt
+                OccurredAt = domainEvent.OccurredAt,
+                EventVersion = domainEvent.Version
             });
         }
 

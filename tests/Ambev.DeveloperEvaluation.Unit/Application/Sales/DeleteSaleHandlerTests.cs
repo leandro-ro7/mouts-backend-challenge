@@ -1,5 +1,6 @@
 using Ambev.DeveloperEvaluation.Application.Sales.DeleteSale;
 using Ambev.DeveloperEvaluation.Domain.Entities;
+using Ambev.DeveloperEvaluation.Domain.Events;
 using Ambev.DeveloperEvaluation.Domain.Repositories;
 using Ambev.DeveloperEvaluation.Domain.ValueObjects;
 using FluentAssertions;
@@ -55,5 +56,21 @@ public class DeleteSaleHandlerTests
         var act = async () => await Handler().Handle(new DeleteSaleCommand { Id = id }, CancellationToken.None);
 
         await act.Should().ThrowAsync<KeyNotFoundException>().WithMessage($"*{id}*");
+    }
+
+    [Fact(DisplayName = "Given active sale When deleting Then SaleCancelledEvent is raised")]
+    public async Task Handle_ActiveSale_RaisesSaleCancelledEvent()
+    {
+        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "Product", 2, 50m) });
+        sale.ClearDomainEvents();
+
+        _repository.GetByIdAsync(sale.Id, Arg.Any<CancellationToken>()).Returns(sale);
+        _repository.UpdateAsync(Arg.Any<Sale>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => callInfo.Arg<Sale>());
+
+        await Handler().Handle(new DeleteSaleCommand { Id = sale.Id }, CancellationToken.None);
+
+        sale.DomainEvents.Should().ContainSingle(e => e is SaleCancelledEvent);
     }
 }

@@ -98,7 +98,39 @@ public class OutboxProcessor : BackgroundService
                     continue;
                 }
 
-                var domainEvent = (IDomainEvent)JsonSerializer.Deserialize(message.Payload, eventType)!;
+                IDomainEvent domainEvent;
+                try
+                {
+                    domainEvent = (IDomainEvent)JsonSerializer.Deserialize(message.Payload, eventType)!;
+                }
+                catch (JsonException ex)
+                {
+                    // Payload is permanently malformed — retrying will never succeed.
+                    // Mark as processed to remove it from the active queue and prevent infinite poison-pill loop.
+                    _logger.LogError(ex,
+                        "Outbox: malformed JSON payload for message {Id} (type '{Type}'). Skipping permanently.",
+                        message.Id, message.EventType);
+                    message.ProcessedAt = DateTime.UtcNow;
+                    message.LockedUntil = null;
+                    message.ClaimId = null;
+                    await db.SaveChangesAsync(cancellationToken);
+                    continue;
+                }
+
+                // Version guard: the stored EventVersion (written at aggregate-save time) must match
+                // the current schema version of the deserialized type. A mismatch means this message
+                // was written before a schema upgrade — fields may be missing or reinterpreted.
+                // We still dispatch (the upgrade may be backwards-compatible) but emit a structured
+                // warning so operators can detect stale messages in the queue and act accordingly.
+                if (message.EventVersion != domainEvent.Version)
+                {
+                    _logger.LogWarning(
+                        "Outbox: version mismatch for message {Id} — stored EventVersion={StoredVersion}, " +
+                        "current {EventType} Version={CurrentVersion}. " +
+                        "The payload was written with an older schema; verify backwards compatibility.",
+                        message.Id, message.EventVersion, eventType.Name, domainEvent.Version);
+                }
+
                 await publisher.PublishAsync(domainEvent, cancellationToken);
 
                 message.ProcessedAt = DateTime.UtcNow;
@@ -107,7 +139,8 @@ public class OutboxProcessor : BackgroundService
                 await db.SaveChangesAsync(cancellationToken);
 
                 _logger.LogInformation(
-                    "Outbox: dispatched {EventType} ({Id}).", eventType.Name, message.Id);
+                    "Outbox: dispatched {EventType} v{Version} ({Id}).",
+                    eventType.Name, domainEvent.Version, message.Id);
             }
             catch (Exception ex)
             {

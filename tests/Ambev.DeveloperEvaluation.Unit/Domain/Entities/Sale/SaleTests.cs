@@ -20,16 +20,16 @@ public class SaleTests
         sale.SaleNumber.Should().MatchRegex(@"^\d{8}-[A-F0-9]{8}$");
     }
 
-    [Fact(DisplayName = "Given items When adding Then TotalAmount is recalculated")]
-    public void AddItem_RecalculatesTotalAmount()
+    [Fact(DisplayName = "Given items on Create Then TotalAmount is calculated with discount")]
+    public void Create_WithItems_RecalculatesTotalAmount()
     {
         // qty=4 → 10% discount → total = 4 * 10 * 0.90 = 36
         var sale = SaleTestData.CreateSaleWithItem(4, 10m);
         sale.TotalAmount.Should().Be(36m);
     }
 
-    [Fact(DisplayName = "Given item qty=10 When adding Then 20% discount applied")]
-    public void AddItem_Qty10_Applies20PercentDiscount()
+    [Fact(DisplayName = "Given qty=10 on Create Then 20% discount applied")]
+    public void Create_Qty10_Applies20PercentDiscount()
     {
         // qty=10 → 20% discount → total = 10 * 10 * 0.80 = 80
         var sale = SaleTestData.CreateSaleWithItem(10, 10m);
@@ -68,13 +68,14 @@ public class SaleTests
         act.Should().Throw<DomainException>();
     }
 
-    [Fact(DisplayName = "Given cancelled sale When AddItem Then throws DomainException")]
-    public void AddItem_ToACancelledSale_ThrowsDomainException()
+    [Fact(DisplayName = "Given cancelled sale When UpdateFull Then throws DomainException")]
+    public void UpdateFull_OnCancelledSale_ThrowsDomainException()
     {
         var sale = SaleTestData.CreateValidSale();
         sale.Cancel();
 
-        var act = () => sale.AddItem(Guid.NewGuid(), "Product", 1, 10m);
+        var act = () => sale.UpdateFull(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "Product", 1, 10m) });
         act.Should().Throw<DomainException>();
     }
 
@@ -116,15 +117,16 @@ public class SaleTests
         sale.DomainEvents.Should().ContainSingle(e => e is SaleCancelledEvent);
     }
 
-    [Fact(DisplayName = "When Update Then SaleModifiedEvent is raised")]
-    public void Update_RaisesSaleModifiedEvent()
+    [Fact(DisplayName = "When UpdateFull Then SaleModifiedEvent is raised")]
+    public void UpdateFull_RaisesSaleModifiedEvent()
     {
         var sale = SaleTestData.CreateValidSale();
         sale.ClearDomainEvents();
 
-        sale.Update(Guid.NewGuid(), "New Customer", Guid.NewGuid(), "New Branch", DateTime.UtcNow);
+        sale.UpdateFull(Guid.NewGuid(), "New Customer", Guid.NewGuid(), "New Branch", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "P", 2, 10m) });
 
-        sale.DomainEvents.Should().ContainSingle(e => e is SaleModifiedEvent);
+        sale.DomainEvents.Should().Contain(e => e is SaleModifiedEvent);
     }
 
     [Fact(DisplayName = "When CancelItem Then ItemCancelledEvent is raised")]
@@ -139,54 +141,45 @@ public class SaleTests
         sale.DomainEvents.Should().ContainSingle(e => e is ItemCancelledEvent);
     }
 
-    [Fact(DisplayName = "ReplaceItems with two active items raises two ItemCancelledEvents")]
-    public void ReplaceItems_TwoActiveItems_RaisesTwoItemCancelledEvents()
+    [Fact(DisplayName = "UpdateFull with two active items raises two ItemCancelledEvents")]
+    public void UpdateFull_TwoActiveItems_RaisesTwoItemCancelledEvents()
     {
-        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
-        sale.AddItem(Guid.NewGuid(), "Item1", 2, 10m);
-        sale.AddItem(Guid.NewGuid(), "Item2", 3, 20m);
+        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "Item1", 2, 10m), new NewSaleItemSpec(Guid.NewGuid(), "Item2", 3, 20m) });
         sale.ClearDomainEvents();
 
-        sale.ReplaceItems(new[]
-        {
-            new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 15m)
-        });
+        sale.UpdateFull(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 15m) });
 
         sale.DomainEvents.OfType<ItemCancelledEvent>()
             .Should().HaveCount(2, "one event per active item removed");
     }
 
-    [Fact(DisplayName = "ReplaceItems skips already-cancelled items when raising ItemCancelledEvent")]
-    public void ReplaceItems_AlreadyCancelledItem_NotRaisedAgain()
+    [Fact(DisplayName = "UpdateFull skips already-cancelled items when raising ItemCancelledEvent")]
+    public void UpdateFull_AlreadyCancelledItem_NotRaisedAgain()
     {
-        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
-        sale.AddItem(Guid.NewGuid(), "Active", 2, 10m);
-        var cancelledItemId = sale.AddItem(Guid.NewGuid(), "Cancelled", 2, 10m).Id;
-        sale.CancelItem(cancelledItemId);
+        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "Active", 2, 10m), new NewSaleItemSpec(Guid.NewGuid(), "ToCancel", 2, 10m) });
+        sale.CancelItem(sale.Items[1].Id);
         sale.ClearDomainEvents();
 
-        sale.ReplaceItems(new[]
-        {
-            new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 15m)
-        });
+        sale.UpdateFull(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 15m) });
 
-        // Only the active item should raise ItemCancelledEvent; the already-cancelled one must not
         sale.DomainEvents.OfType<ItemCancelledEvent>()
             .Should().HaveCount(1, "only the active item raises ItemCancelledEvent");
     }
 
-    [Fact(DisplayName = "ReplaceItems with no active items raises no ItemCancelledEvents")]
-    public void ReplaceItems_NoActiveItems_RaisesNoItemCancelledEvent()
+    [Fact(DisplayName = "UpdateFull with no active items raises no ItemCancelledEvents")]
+    public void UpdateFull_NoActiveItems_RaisesNoItemCancelledEvent()
     {
-        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
-        var itemId = sale.AddItem(Guid.NewGuid(), "OnlyItem", 2, 10m).Id;
-        sale.CancelItem(itemId);
+        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "OnlyItem", 2, 10m) });
+        sale.CancelItem(sale.Items[0].Id);
         sale.ClearDomainEvents();
 
-        sale.ReplaceItems(new[]
-        {
-            new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 15m)
-        });
+        sale.UpdateFull(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 15m) });
 
         sale.DomainEvents.OfType<ItemCancelledEvent>()
             .Should().BeEmpty("all existing items were already cancelled");
@@ -195,8 +188,7 @@ public class SaleTests
     [Fact(DisplayName = "UpdateFull increments RowVersion exactly once for a header+items mutation")]
     public void UpdateFull_IncrementsRowVersionExactlyOnce()
     {
-        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
-        sale.AddItem(Guid.NewGuid(), "Old", 2, 10m);
+        var sale = SaleTestData.CreateValidSale();
         sale.ClearDomainEvents();
         var initialVersion = sale.RowVersion;
 
@@ -213,8 +205,7 @@ public class SaleTests
     [Fact(DisplayName = "UpdateFull raises both SaleModifiedEvent and ItemCancelledEvent")]
     public void UpdateFull_RaisesSaleModifiedAndItemCancelledEvents()
     {
-        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
-        sale.AddItem(Guid.NewGuid(), "OldItem", 3, 10m);
+        var sale = SaleTestData.CreateSaleWithItem(3, 10m);
         sale.ClearDomainEvents();
 
         sale.UpdateFull(
@@ -226,5 +217,44 @@ public class SaleTests
         sale.DomainEvents.Should().ContainSingle(e => e is SaleModifiedEvent);
         sale.DomainEvents.Should().ContainSingle(e => e is ItemCancelledEvent,
             "the one active old item must raise ItemCancelledEvent");
+    }
+
+    [Fact(DisplayName = "SaleModifiedEvent carries correct PreviousTotalAmount and NewTotalAmount")]
+    public void UpdateFull_SaleModifiedEvent_CarriesFinancialDelta()
+    {
+        // Old item: qty=3, price=10 → no discount → total = 30
+        var sale = SaleTestData.CreateSaleWithItem(3, 10m);
+        var previousTotal = sale.TotalAmount; // 30
+        sale.ClearDomainEvents();
+
+        // New item: qty=4, price=20 → 10% discount → total = 72
+        sale.UpdateFull(
+            sale.CustomerId, sale.CustomerName,
+            sale.BranchId, sale.BranchName,
+            sale.SaleDate,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 4, 20m) });
+
+        var evt = sale.DomainEvents.OfType<SaleModifiedEvent>().Single();
+        evt.PreviousTotalAmount.Should().Be(previousTotal, "captures total before mutation");
+        evt.NewTotalAmount.Should().Be(sale.TotalAmount, "captures total after recalculation");
+        evt.NewTotalAmount.Should().NotBe(previousTotal, "the amounts must differ when items change");
+    }
+
+    [Fact(DisplayName = "UpdateFull with same items preserves TotalAmount in both delta fields")]
+    public void UpdateFull_SameItems_SaleModifiedEvent_TotalAmountUnchanged()
+    {
+        var prodId = Guid.NewGuid();
+        var sale = DomainSale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(prodId, "Item", 5, 10m) });
+        var totalBefore = sale.TotalAmount;
+        sale.ClearDomainEvents();
+
+        // Replace with the exact same item spec — total should not change
+        sale.UpdateFull(Guid.NewGuid(), "New Customer", Guid.NewGuid(), "New Branch", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(prodId, "Item", 5, 10m) });
+
+        var evt = sale.DomainEvents.OfType<SaleModifiedEvent>().Single();
+        evt.PreviousTotalAmount.Should().Be(totalBefore);
+        evt.NewTotalAmount.Should().Be(totalBefore, "same items means same total");
     }
 }

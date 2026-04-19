@@ -12,7 +12,9 @@
       "Read(//mnt/c/mouts/**)",
       "Read(//c//**)",
       "Bash(find /c/mouts/mouts-backend-challenge/src -name \"CancelSaleHandler.cs\" -exec cat {} \\\\;)",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(dotnet list *)",
+      "Read(//c/Users/leand/.claude/projects/c--mouts-mouts-backend-challenge/memory/**)"
     ]
   }
 }

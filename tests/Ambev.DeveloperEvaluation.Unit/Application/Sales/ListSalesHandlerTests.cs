@@ -81,6 +81,32 @@ public class ListSalesHandlerTests
         result.TotalPages.Should().Be(0);
     }
 
+    [Fact(DisplayName = "HasNextPage is true when current page is not the last")]
+    public async Task Handle_NotLastPage_HasNextPageIsTrue()
+    {
+        SetupListAsync(Enumerable.Empty<Sale>(), 25); // 25 items, size 10 → 3 pages
+        _mapper.Map<IEnumerable<SaleSummaryResult>>(Arg.Any<IEnumerable<Sale>>())
+            .Returns(Enumerable.Empty<SaleSummaryResult>());
+
+        var result = await _handler.Handle(new ListSalesQuery { Page = 2, Size = 10 }, CancellationToken.None);
+
+        result.HasNextPage.Should().BeTrue("page 2 of 3 has a next page");
+        result.HasPreviousPage.Should().BeTrue("page 2 of 3 has a previous page");
+    }
+
+    [Fact(DisplayName = "HasNextPage is false on last page, HasPreviousPage is false on first page")]
+    public async Task Handle_BoundaryPages_HasCorrectFlags()
+    {
+        SetupListAsync(Enumerable.Empty<Sale>(), 10); // exactly 1 page
+        _mapper.Map<IEnumerable<SaleSummaryResult>>(Arg.Any<IEnumerable<Sale>>())
+            .Returns(Enumerable.Empty<SaleSummaryResult>());
+
+        var result = await _handler.Handle(new ListSalesQuery { Page = 1, Size = 10 }, CancellationToken.None);
+
+        result.HasNextPage.Should().BeFalse("only one page — no next");
+        result.HasPreviousPage.Should().BeFalse("first page — no previous");
+    }
+
     [Fact(DisplayName = "Given filters in query When listing Then repository is called with those filters")]
     public async Task Handle_WithFilters_PassesFiltersToRepository()
     {

@@ -12,4 +12,5 @@ public record SaleCreatedEvent(
     IReadOnlyList<SaleItemSnapshot> Items) : IDomainEvent
 {
     public DateTime OccurredAt { get; } = DateTime.UtcNow;
+    public int Version { get; } = 1;
 }

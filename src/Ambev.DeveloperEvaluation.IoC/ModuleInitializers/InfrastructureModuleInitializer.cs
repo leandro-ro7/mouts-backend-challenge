@@ -6,9 +6,6 @@ using Ambev.DeveloperEvaluation.ORM.Repositories;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Rebus.Config;
-using Rebus.Routing.TypeBased;
-using Rebus.Transport.InMem;
 
 namespace Ambev.DeveloperEvaluation.IoC.ModuleInitializers;
 
@@ -26,14 +23,10 @@ public class InfrastructureModuleInitializer : IModuleInitializer
         builder.Services.Configure<OutboxOptions>(
             builder.Configuration.GetSection(OutboxOptions.SectionName));
 
-        // Event publisher — Rebus with InMemory transport (swap for RabbitMQ/ASB via config only)
-        // LoggingEventPublisher is available as a no-broker alternative for dev/test environments.
-        builder.Services.AddScoped<IEventPublisher, RebusEventPublisher>();
-
-        builder.Services.AddRebus(configure => configure
-            .Transport(t => t.UseInMemoryTransport(new InMemNetwork(), "developer-evaluation"))
-            .Routing(r => r.TypeBased())
-        );
+        // Event publisher — structured JSON logging (honest default: no broker dependency).
+        // To integrate a real broker, register a different IEventPublisher implementation here:
+        //   e.g. builder.Services.AddScoped<IEventPublisher, RabbitMqEventPublisher>();
+        builder.Services.AddScoped<IEventPublisher, LoggingEventPublisher>();
 
         // Outbox background services
         builder.Services.AddHostedService<OutboxProcessor>();

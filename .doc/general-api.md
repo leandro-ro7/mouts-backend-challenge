@@ -2,158 +2,182 @@
 
 ## General API Definitions
 
+All endpoints are served under `/api/v1/` and require a valid JWT Bearer token unless stated otherwise.
+
+### Authentication Header
+
+```
+Authorization: Bearer <token>
+```
+
+Obtain a token via `POST /api/v1/auth/login`.
+
+---
+
 ### Pagination
 
-Pagination is supported for list endpoints using the following query parameters:
+Pagination is supported on all list endpoints using the following query parameters:
 
-- `_page`: Page number (default: 1)
-- `_size`: Number of items per page (default: 10)
+- `page` — Page number (default: `1`)
+- `size` — Number of items per page (default: `10`)
 
 Example:
+
 ```
-GET /products?_page=2&_size=20
+GET /api/v1/sales?page=2&size=20
 ```
 
-### Ordering
-
-When requesting a collection of a resource, you can also specify the order of the elements in the collection using the query parameter `_order`. Simply indicate the desired order: ascending (`asc`) or descending (`desc`). If not specified, the default order will be ascending.
-
-**Note**
-
-In the GET request, you must use the field names in the same format as the JSON response.
-
-For example, consider the following Product resource:
+All paginated responses include full navigation metadata:
 
 ```json
 {
-  "id": 1,
-  "title": "Fjallraven - Foldsack No. 1 Backpack, Fits 15 Laptops",
-  "price": 109.95,
-  "description": "Your perfect pack for everyday use and walks in the forest. Stash your laptop (up to 15 inches) in the padded sleeve, your everyday",
-  "category": "men's clothing",
-  "image": "https://fakestoreapi.com/img/81fPKd-2AYL._AC_SL1500_.jpg",
-  "rating": {
-    "rate": 3.9,
-    "count": 120
-  }
+  "data": [],
+  "totalItems": 45,
+  "currentPage": 2,
+  "totalPages": 5,
+  "hasNextPage": true,
+  "hasPreviousPage": true
 }
 ```
 
-In this case, to retrieve a list of products ordered by price in descending order and then by title in ascending order, the request would look like this:
+---
+
+### Ordering
+
+Use the `order` query parameter to sort results. Specify one or more fields with optional direction (`asc` / `desc`). Multiple fields are comma-separated.
 
 ```
-GET /products?_order="price desc, title asc"
+GET /api/v1/sales?order=saleDate desc
+GET /api/v1/sales?order=customerName asc,saleDate desc
 ```
 
-or 
+Supported order fields for Sales: `saleNumber`, `saleDate`, `totalAmount`, `customerName`.
 
-```
-GET /products?_order="price desc, title"
-```
+Unknown field names fall back to the default order (`createdAt desc`).
+
+---
 
 ### Filtering
 
-Filters can be applied to list endpoints using the following query parameters:
+The Sales list endpoint supports the following filter query parameters:
 
-- `field=value`: Filter by specific field value.
-
-Example:
-
-```
-GET /products?category=men's clothing&price=109.95
-```
-
-**String Fields**
-
-To filter partial matches for string fields, use an asterisk (`*`) before or after the value.
+- `customerName` — Case-insensitive partial match on customer name
+- `dateFrom` — Sales on or after this date (ISO 8601, UTC)
+- `dateTo` — Sales on or before this date (ISO 8601, UTC)
+- `isCancelled` — `true` / `false` to filter by cancellation state
 
 Example:
 
 ```
-GET /products?title=Fjallraven*
-GET /products?category=*clothing
+GET /api/v1/sales?customerName=acme&dateFrom=2025-01-01&isCancelled=false
 ```
 
-**Numeric and Date Fields**
+---
 
-To filter numeric or date fields by range, use `_min` and `_max` prefixes before the field name.
+### Idempotency
 
-Example:
+The `POST /api/v1/sales` endpoint supports an optional `idempotencyKey` field (UUID) in the request body.
 
+When provided:
+
+- If a sale already exists with that key, the original sale is returned without creating a duplicate.
+- If no sale exists with that key, a new sale is created and the key is stored.
+
+This guarantees **at-most-once creation** when clients retry on network timeouts.
+
+```json
+{
+  "idempotencyKey": "550e8400-e29b-41d4-a716-446655440000",
+  "customerId": "...",
+  "...": "..."
+}
 ```
-GET /products?_minPrice=50
-GET /products?_minPrice=50&_maxPrice=200
-GET /carts?_minDate=2023-01-01
-```
 
-Logical Operators
-When combining filters, use `&` (AND) between them.
+---
 
-Example:
+### Optimistic Concurrency
 
-```
-GET /products?category=men's clothing&_minPrice=50
-GET /products?title=Fjallraven*&category=men's clothing&_minPrice=100
-```
+`PUT /api/v1/sales/{id}` requires a `rowVersion` field in the request body. The value is the `rowVersion` returned by the most recent `GET` for that sale.
 
-*Note*
-Even when filtering with "or" for different values in the same field, use `&` in the query.
+If another request has modified the sale between your `GET` and `PUT`, the server returns **HTTP 409 Conflict**. Reload the resource and retry with the updated `rowVersion`.
 
-## Error Handling
+---
 
-The API uses conventional HTTP response codes to indicate the success or failure of an API request. In general:
+### Error Handling
 
-- 2xx range indicate success
-- 4xx range indicate an error that failed given the information provided (e.g., a required parameter was omitted, etc.)
-- 5xx range indicate an error with our servers
+The API uses standard HTTP response codes:
 
-### Error Response Format
+- `2xx` — Success
+- `4xx` — Client error (invalid input, not found, conflict)
+- `5xx` — Server error
+
+#### Error Response Format
+
+Every error response body follows this structure:
 
 ```json
 {
   "type": "string",
   "error": "string",
-  "detail": "string"
+  "detail": "string",
+  "traceId": "string"
 }
 ```
 
-- `type`: A machine-readable error type identifier
-- `error`: A short, human-readable summary of the problem
-- `detail`: A human-readable explanation specific to this occurrence of the problem
+- `type` — Machine-readable error type identifier
+- `error` — Short human-readable summary
+- `detail` — Specific explanation for this occurrence
+- `traceId` — Correlation ID for log tracing (matches the ASP.NET Core `TraceIdentifier`)
 
-Example error responses:
+#### Error Type Reference
 
-1. Resource Not Found
-```json
-{
-  "type": "ResourceNotFound",
-  "error": "Product not found",
-  "detail": "The product with ID 12345 does not exist in our database"
-}
-```
+| HTTP Status | `type` | Trigger |
+| --- | --- | --- |
+| 400 | `ValidationError` | FluentValidation failure |
+| 400 | `BusinessRuleViolation` | Domain rule violated (e.g. >20 items) |
+| 400 | `InvalidOperation` | Invalid state transition |
+| 401 | `Unauthorized` | Missing or invalid JWT |
+| 404 | `ResourceNotFound` | Entity not found |
+| 409 | `ConcurrencyConflict` | Stale `rowVersion` on PUT |
+| 500 | `InternalError` | Unhandled server exception |
 
-2. Authentication Error
-```json
-{
-  "type": "AuthenticationError",
-  "error": "Invalid authentication token",
-  "detail": "The provided authentication token has expired or is invalid"
-}
-```
+#### Example Error Responses
 
-3. Validation Error
+##### Validation Error (400)
+
 ```json
 {
   "type": "ValidationError",
-  "error": "Invalid input data",
-  "detail": "The 'price' field must be a positive number"
+  "error": "One or more validation errors occurred.",
+  "detail": "Items: A sale must have at least one item.",
+  "traceId": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
 }
 ```
 
-For detailed error information, refer to the specific endpoint documentation.
+##### Concurrency Conflict (409)
+
+```json
+{
+  "type": "ConcurrencyConflict",
+  "error": "Sale was modified by a concurrent request. Reload and retry.",
+  "detail": "Sale was modified by a concurrent request. Reload and retry.",
+  "traceId": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+}
+```
+
+##### Not Found (404)
+
+```json
+{
+  "type": "ResourceNotFound",
+  "error": "Sale with ID 123 was not found.",
+  "detail": "Sale with ID 123 was not found.",
+  "traceId": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+}
+```
 
 <br>
 <div style="display: flex; justify-content: space-between;">
   <a href="./frameworks.md">Previous: Frameworks</a>
-  <a href="./products-api.md">Next: Products API</a>
+  <a href="./sales-api.md">Next: Sales API</a>
 </div>

@@ -26,8 +26,8 @@ public class UpdateSaleHandlerTests
 
     private static Sale CreateSaleWithItem(int quantity = 5)
     {
-        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
-        sale.AddItem(Guid.NewGuid(), "Product", quantity, 100m);
+        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "Product", quantity, 100m) });
         sale.ClearDomainEvents();
         return sale;
     }
@@ -90,8 +90,8 @@ public class UpdateSaleHandlerTests
     [Fact(DisplayName = "UpdateFull sets correct discounts on new items")]
     public void UpdateFull_Domain_SetsCorrectDiscountsOnNewItems()
     {
-        var sale = Sale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
-        sale.AddItem(Guid.NewGuid(), "Old", 5, 100m);
+        var sale = Sale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "Old", 5, 100m) });
         sale.ClearDomainEvents();
 
         sale.UpdateFull(
@@ -171,9 +171,8 @@ public class UpdateSaleHandlerTests
     [Fact(DisplayName = "UpdateFull raises ItemCancelledEvent for each active item removed")]
     public async Task Handle_ExistingSale_RaisesItemCancelledEventForRemovedActiveItems()
     {
-        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow, Array.Empty<NewSaleItemSpec>());
-        sale.AddItem(Guid.NewGuid(), "OldProduct1", 2, 100m);
-        sale.AddItem(Guid.NewGuid(), "OldProduct2", 3, 50m);
+        var sale = Sale.Create(Guid.NewGuid(), "Customer", Guid.NewGuid(), "Branch", DateTime.UtcNow,
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "OldProduct1", 2, 100m), new NewSaleItemSpec(Guid.NewGuid(), "OldProduct2", 3, 50m) });
         sale.ClearDomainEvents();
 
         var command = ValidCommand(sale.Id);

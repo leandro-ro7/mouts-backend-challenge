@@ -17,4 +17,9 @@ public class OutboxMessage
     // the processor fetches exactly its claimed rows using this token.
     // Cleared on success (ProcessedAt set) or failure (LockedUntil released).
     public Guid? ClaimId { get; set; }
+
+    // EventVersion: schema version captured at write time from IDomainEvent.Version.
+    // The OutboxProcessor compares this against the deserialized event's Version to detect
+    // stale messages written before a schema upgrade. A mismatch triggers a structured warning.
+    public int EventVersion { get; set; } = 1;
 }

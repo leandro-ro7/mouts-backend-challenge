@@ -16,6 +16,7 @@ public class OutboxMessageConfiguration : IEntityTypeConfiguration<OutboxMessage
         builder.Property(m => m.OccurredAt).IsRequired();
         builder.Property(m => m.ProcessedAt);
         builder.Property(m => m.LockedUntil);
+        builder.Property(m => m.EventVersion).IsRequired().HasDefaultValue(1);
 
         builder.HasIndex(m => m.ProcessedAt);
         builder.HasIndex(m => m.LockedUntil);

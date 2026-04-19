@@ -11,6 +11,10 @@ public class Sale : AggregateRoot
     public string SaleNumber { get; private set; } = string.Empty;
     public DateTime SaleDate { get; private set; }
 
+    // Client-supplied idempotency key — if provided, a second Create with the same key
+    // returns the original sale instead of creating a duplicate. Optional; null means no dedup.
+    public Guid? IdempotencyKey { get; private set; }
+
     // External Identities — denormalized snapshots, no FK to User or Branch domains
     public Guid CustomerId { get; private set; }
     public string CustomerName { get; private set; } = string.Empty;
@@ -41,7 +45,8 @@ public class Sale : AggregateRoot
         Guid customerId, string customerName,
         Guid branchId, string branchName,
         DateTime saleDate,
-        IEnumerable<NewSaleItemSpec> items)
+        IEnumerable<NewSaleItemSpec> items,
+        Guid? idempotencyKey = null)
     {
         var sale = new Sale
         {
@@ -53,6 +58,7 @@ public class Sale : AggregateRoot
             BranchName = branchName,
             SaleDate = saleDate,
             IsCancelled = false,
+            IdempotencyKey = idempotencyKey,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -74,46 +80,6 @@ public class Sale : AggregateRoot
             saleDate, sale.TotalAmount, snapshots));
 
         return sale;
-    }
-
-    public SaleItem AddItem(Guid productId, string productName, int quantity, decimal unitPrice)
-    {
-        if (IsCancelled)
-            throw new DomainException("Cannot add items to a cancelled sale.");
-
-        var item = new SaleItem(Id, productId, productName, quantity, unitPrice);
-        _items.Add(item);
-        RecalculateTotal();
-
-        RaiseDomainEvent(new ItemAddedEvent(
-            Id, item.Id, item.ProductId, item.ProductName,
-            item.Quantity, item.UnitPrice, item.Discount.Value, item.TotalAmount));
-
-        return item;
-    }
-
-    public void UpdateItem(Guid itemId, int quantity, decimal unitPrice)
-    {
-        if (IsCancelled)
-            throw new DomainException("Cannot update items of a cancelled sale.");
-
-        var item = _items.FirstOrDefault(i => i.Id == itemId)
-            ?? throw new DomainException($"Item {itemId} not found in sale {SaleNumber}.");
-
-        if (item.IsCancelled)
-            throw new DomainException("Cannot update a cancelled item.");
-
-        var previousQuantity = item.Quantity;
-        var previousUnitPrice = item.UnitPrice;
-
-        item.Update(quantity, unitPrice);
-        RecalculateTotal();
-        UpdatedAt = DateTime.UtcNow;
-
-        RaiseDomainEvent(new ItemModifiedEvent(
-            Id, item.Id, item.ProductId, item.ProductName,
-            previousQuantity, previousUnitPrice,
-            item.Quantity, item.UnitPrice, item.Discount.Value, item.TotalAmount));
     }
 
     public SaleItem CancelItem(Guid itemId)
@@ -154,31 +120,9 @@ public class Sale : AggregateRoot
             TotalAmount));
     }
 
-    public void Update(Guid customerId, string customerName, Guid branchId, string branchName, DateTime saleDate)
-    {
-        if (IsCancelled)
-            throw new DomainException("Cannot update a cancelled sale.");
-
-        var evt = new SaleModifiedEvent(
-            Id, SaleNumber,
-            CustomerId, CustomerName, BranchId, BranchName, SaleDate,
-            customerId, customerName, branchId, branchName, saleDate);
-
-        CustomerId = customerId;
-        CustomerName = customerName;
-        BranchId = branchId;
-        BranchName = branchName;
-        SaleDate = saleDate;
-        UpdatedAt = DateTime.UtcNow;
-        RowVersion++;
-
-        RaiseDomainEvent(evt);
-    }
-
     /// <summary>
     /// Atomically updates the sale header and replaces all items in a single mutation.
-    /// Produces exactly one RowVersion increment — use this for the PUT endpoint to avoid
-    /// the double-increment that would occur when calling Update() + ReplaceItems() separately.
+    /// Produces exactly one RowVersion increment — use this for the PUT endpoint.
     /// </summary>
     public void UpdateFull(
         Guid customerId, string customerName,
@@ -190,10 +134,12 @@ public class Sale : AggregateRoot
             throw new DomainException("Cannot update a cancelled sale.");
 
         // Capture previous state before any mutation for the SaleModifiedEvent delta.
-        var evt = new SaleModifiedEvent(
-            Id, SaleNumber,
-            CustomerId, CustomerName, BranchId, BranchName, SaleDate,
-            customerId, customerName, branchId, branchName, saleDate);
+        var previousCustomerId = CustomerId;
+        var previousCustomerName = CustomerName;
+        var previousBranchId = BranchId;
+        var previousBranchName = BranchName;
+        var previousSaleDate = SaleDate;
+        var previousTotal = TotalAmount;
 
         // Update header
         CustomerId = customerId;
@@ -223,33 +169,11 @@ public class Sale : AggregateRoot
                 Id, item.Id, item.ProductId, item.ProductName,
                 item.Quantity, item.UnitPrice, item.Discount.Value, item.TotalAmount));
 
-        RaiseDomainEvent(evt);
-    }
-
-    internal IReadOnlyList<SaleItem> ReplaceItems(IEnumerable<NewSaleItemSpec> newItems)
-    {
-        if (IsCancelled)
-            throw new DomainException("Cannot update items of a cancelled sale.");
-
-        // Physically remove all existing items so the repository can delete them as orphans.
-        // Raise ItemCancelledEvent for each active item removed — downstream consumers must
-        // treat a replace-all PUT identically to individual CancelItem calls for removed items.
-        var removed = _items.ToList();
-        _items.Clear();
-
-        foreach (var item in removed.Where(i => !i.IsCancelled))
-            RaiseDomainEvent(new ItemCancelledEvent(
-                Id, item.Id, item.ProductId, item.ProductName,
-                item.Quantity, item.UnitPrice, item.TotalAmount));
-
-        foreach (var spec in newItems)
-            _items.Add(new SaleItem(Id, spec.ProductId, spec.ProductName, spec.Quantity, spec.UnitPrice));
-
-        RecalculateTotal();
-        UpdatedAt = DateTime.UtcNow;
-        RowVersion++;
-
-        return removed.AsReadOnly();
+        // SaleModifiedEvent emitted after RecalculateTotal so NewTotalAmount is accurate.
+        RaiseDomainEvent(new SaleModifiedEvent(
+            Id, SaleNumber,
+            previousCustomerId, previousCustomerName, previousBranchId, previousBranchName, previousSaleDate, previousTotal,
+            CustomerId, CustomerName, BranchId, BranchName, SaleDate, TotalAmount));
     }
 
     private void RecalculateTotal()

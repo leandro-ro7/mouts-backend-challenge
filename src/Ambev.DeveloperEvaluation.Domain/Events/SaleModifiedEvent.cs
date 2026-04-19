@@ -9,12 +9,15 @@ public record SaleModifiedEvent(
     Guid PreviousBranchId,
     string PreviousBranchName,
     DateTime PreviousSaleDate,
+    decimal PreviousTotalAmount,
     // New values
     Guid NewCustomerId,
     string NewCustomerName,
     Guid NewBranchId,
     string NewBranchName,
-    DateTime NewSaleDate) : IDomainEvent
+    DateTime NewSaleDate,
+    decimal NewTotalAmount) : IDomainEvent
 {
     public DateTime OccurredAt { get; } = DateTime.UtcNow;
+    public int Version { get; } = 1;
 }

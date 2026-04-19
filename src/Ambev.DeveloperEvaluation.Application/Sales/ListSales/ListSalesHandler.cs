@@ -22,12 +22,15 @@ public class ListSalesHandler : IRequestHandler<ListSalesQuery, ListSalesResult>
             query.CustomerName, query.DateFrom, query.DateTo, query.IsCancelled,
             cancellationToken);
 
+        var totalPages = query.Size > 0 ? (int)Math.Ceiling(totalCount / (double)query.Size) : 0;
         return new ListSalesResult
         {
             Data = _mapper.Map<IEnumerable<SaleSummaryResult>>(items),
             TotalItems = totalCount,
             CurrentPage = query.Page,
-            TotalPages = query.Size > 0 ? (int)Math.Ceiling(totalCount / (double)query.Size) : 0
+            TotalPages = totalPages,
+            HasNextPage = query.Page < totalPages,
+            HasPreviousPage = query.Page > 1
         };
     }
 }

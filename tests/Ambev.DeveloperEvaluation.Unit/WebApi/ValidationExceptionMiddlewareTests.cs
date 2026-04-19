@@ -5,6 +5,7 @@ using FluentAssertions;
 using FluentValidation;
 using FluentValidation.Results;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Ambev.DeveloperEvaluation.Unit.WebApi;
@@ -17,7 +18,7 @@ public class ValidationExceptionMiddlewareTests
         context.Response.Body = new MemoryStream();
 
         RequestDelegate next = _ => throw exception;
-        var middleware = new ValidationExceptionMiddleware(next);
+        var middleware = new ValidationExceptionMiddleware(next, NullLogger<ValidationExceptionMiddleware>.Instance);
 
         await middleware.InvokeAsync(context);
 
@@ -108,6 +109,7 @@ public class ValidationExceptionMiddlewareTests
         status.Should().Be(500);
         body.GetProperty("type").GetString().Should().Be("InternalError");
         body.GetProperty("error").GetString().Should().Be("An unexpected error occurred.");
+        body.GetProperty("traceId").GetString().Should().NotBeNullOrEmpty("traceId must be present for correlation");
     }
 
     [Fact(DisplayName = "Next delegate success — response passes through unchanged")]
@@ -122,7 +124,7 @@ public class ValidationExceptionMiddlewareTests
             return Task.CompletedTask;
         };
 
-        var middleware = new ValidationExceptionMiddleware(next);
+        var middleware = new ValidationExceptionMiddleware(next, NullLogger<ValidationExceptionMiddleware>.Instance);
         await middleware.InvokeAsync(context);
 
         context.Response.StatusCode.Should().Be(200);

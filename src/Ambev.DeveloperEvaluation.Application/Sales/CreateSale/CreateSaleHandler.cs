@@ -19,12 +19,21 @@ public class CreateSaleHandler : IRequestHandler<CreateSaleCommand, CreateSaleRe
 
     public async Task<CreateSaleResult> Handle(CreateSaleCommand command, CancellationToken cancellationToken)
     {
+        // Idempotency: if a key was provided and a sale already exists for it, return it as-is.
+        if (command.IdempotencyKey.HasValue)
+        {
+            var existing = await _repository.GetByIdempotencyKeyAsync(command.IdempotencyKey.Value, cancellationToken);
+            if (existing is not null)
+                return _mapper.Map<CreateSaleResult>(existing);
+        }
+
         // Items are passed to Create so the SaleCreatedEvent snapshot is complete at emission time.
         var sale = Sale.Create(
             command.CustomerId, command.CustomerName,
             command.BranchId, command.BranchName,
             command.SaleDate,
-            command.Items.Select(i => new NewSaleItemSpec(i.ProductId, i.ProductName, i.Quantity, i.UnitPrice)));
+            command.Items.Select(i => new NewSaleItemSpec(i.ProductId, i.ProductName, i.Quantity, i.UnitPrice)),
+            command.IdempotencyKey);
 
         var created = await _repository.CreateAsync(sale, cancellationToken);
 

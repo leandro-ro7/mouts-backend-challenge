@@ -1,14 +1,14 @@
-using Ambev.DeveloperEvaluation.Domain.Entities;
+using Ambev.DeveloperEvaluation.Domain.Enums;
 
-namespace Ambev.DeveloperEvaluation.Domain.Events
+namespace Ambev.DeveloperEvaluation.Domain.Events;
+
+public record UserRegisteredEvent(
+    Guid UserId,
+    string Username,
+    string Email,
+    UserRole Role,
+    DateTime CreatedAt) : IDomainEvent
 {
-    public class UserRegisteredEvent
-    {
-        public User User { get; }
-
-        public UserRegisteredEvent(User user)
-        {
-            User = user;
-        }
-    }
+    public DateTime OccurredAt { get; } = DateTime.UtcNow;
+    public int Version { get; } = 1;
 }

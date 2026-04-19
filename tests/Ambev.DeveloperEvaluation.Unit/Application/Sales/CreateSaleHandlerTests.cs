@@ -67,4 +67,43 @@ public class CreateSaleHandlerTests
 
         capturedSale!.Items[0].Discount.Value.Should().Be(0.20m);
     }
+
+    [Fact(DisplayName = "Given IdempotencyKey already used When creating Then returns existing sale without re-creating")]
+    public async Task Handle_DuplicateIdempotencyKey_ReturnsExistingSaleWithoutCreate()
+    {
+        var key = Guid.NewGuid();
+        var command = CreateSaleHandlerTestData.ValidCommand(itemQuantity: 4);
+        command.IdempotencyKey = key;
+
+        var existingSale = Sale.Create(Guid.NewGuid(), "C", Guid.NewGuid(), "B", DateTime.UtcNow,
+            Array.Empty<Ambev.DeveloperEvaluation.Domain.ValueObjects.NewSaleItemSpec>(), key);
+        var expectedResult = new CreateSaleResult { Id = existingSale.Id };
+
+        _repository.GetByIdempotencyKeyAsync(key, Arg.Any<CancellationToken>()).Returns(existingSale);
+        _mapper.Map<CreateSaleResult>(existingSale).Returns(expectedResult);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.Id.Should().Be(existingSale.Id);
+        await _repository.DidNotReceive().CreateAsync(Arg.Any<Sale>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact(DisplayName = "Given new IdempotencyKey When creating Then persists sale with key stored")]
+    public async Task Handle_NewIdempotencyKey_PersistsSaleWithKey()
+    {
+        var key = Guid.NewGuid();
+        var command = CreateSaleHandlerTestData.ValidCommand(itemQuantity: 4);
+        command.IdempotencyKey = key;
+
+        _repository.GetByIdempotencyKeyAsync(key, Arg.Any<CancellationToken>()).Returns((Sale?)null);
+        Sale? captured = null;
+        _repository.CreateAsync(Arg.Any<Sale>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => { captured = callInfo.Arg<Sale>(); return captured!; });
+        _mapper.Map<CreateSaleResult>(Arg.Any<Sale>()).Returns(new CreateSaleResult());
+
+        await _handler.Handle(command, CancellationToken.None);
+
+        captured!.IdempotencyKey.Should().Be(key);
+        await _repository.Received(1).CreateAsync(Arg.Any<Sale>(), Arg.Any<CancellationToken>());
+    }
 }

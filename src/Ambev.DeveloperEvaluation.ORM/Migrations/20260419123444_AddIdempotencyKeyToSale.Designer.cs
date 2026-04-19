@@ -3,6 +3,7 @@ using System;
 using Ambev.DeveloperEvaluation.ORM;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Ambev.DeveloperEvaluation.ORM.Migrations
 {
     [DbContext(typeof(DefaultContext))]
-    partial class DefaultContextModelSnapshot : ModelSnapshot
+    [Migration("20260419123444_AddIdempotencyKeyToSale")]
+    partial class AddIdempotencyKeyToSale
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -75,11 +78,6 @@ namespace Ambev.DeveloperEvaluation.ORM.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CustomerName")
-                        .HasDatabaseName("ix_sales_customername_trgm")
-                        .HasMethod("gin")
-                        .HasOperators(new[] { "gin_trgm_ops" });
 
                     b.HasIndex("IdempotencyKey")
                         .IsUnique()
@@ -187,10 +185,6 @@ namespace Ambev.DeveloperEvaluation.ORM.Migrations
 
                     b.Property<Guid?>("ClaimId")
                         .HasColumnType("uuid");
-
-                    b.Property<int>("EventVersion")
-                        .HasDefaultValue(1)
-                        .HasColumnType("integer");
 
                     b.Property<string>("EventType")
                         .IsRequired()

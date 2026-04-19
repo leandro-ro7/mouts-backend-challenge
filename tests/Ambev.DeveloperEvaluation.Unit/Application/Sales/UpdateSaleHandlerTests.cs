@@ -100,13 +100,13 @@ public class UpdateSaleHandlerTests
             sale.SaleDate,
             new[]
             {
-                new NewSaleItemSpec(Guid.NewGuid(), "P1", 4, 10m),
+                new NewSaleItemSpec(Guid.NewGuid(), "P1", 5, 10m),
                 new NewSaleItemSpec(Guid.NewGuid(), "P2", 15, 20m)
             });
 
         // UpdateFull replaces items — only 2 new items remain
         sale.Items.Count.Should().Be(2);
-        sale.Items.Should().Contain(i => i.Discount.Value == 0.10m); // P1 qty=4
+        sale.Items.Should().Contain(i => i.Discount.Value == 0.10m); // P1 qty=5
         sale.Items.Should().Contain(i => i.Discount.Value == 0.20m); // P2 qty=15
     }
 

@@ -7,17 +7,17 @@ namespace Ambev.DeveloperEvaluation.Unit.Domain.Entities.Sale;
 
 /// <summary>
 /// Tests all discount tier boundary values explicitly via the DiscountRate value object.
-/// Decision documented: "4+" in requirements summary prevails over "above 4" in narrative.
-/// qty 4 = 10% discount (inclusive lower bound of first tier).
+/// Business rule: "above 4 identical items" → qty > 4 is the threshold for 10% discount.
+/// qty 4 = 0% discount (below threshold); qty 5 = first qty eligible for 10%.
 /// </summary>
 public class SaleItemDiscountTests
 {
     [Theory(DisplayName = "Given quantity When resolving DiscountRate Then returns correct tier")]
     [InlineData(1,  0.00)]  // below minimum — no discount
     [InlineData(2,  0.00)]
-    [InlineData(3,  0.00)]  // boundary: last qty without discount
-    [InlineData(4,  0.10)]  // boundary: first qty with 10% — "4+" per summary
-    [InlineData(5,  0.10)]
+    [InlineData(3,  0.00)]
+    [InlineData(4,  0.00)]  // boundary: still below threshold (rule is "above 4")
+    [InlineData(5,  0.10)]  // boundary: first qty with 10% discount
     [InlineData(9,  0.10)]  // boundary: last qty at 10%
     [InlineData(10, 0.20)]  // boundary: first qty at 20%
     [InlineData(11, 0.20)]

@@ -100,7 +100,7 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         var (client, _) = await AuthenticatedClientAsync();
 
         // Create a sale first
-        var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload(quantity: 4));
+        var createResponse = await client.PostAsJsonAsync("/api/v1/sales", DefaultPayload(quantity: 5));
         createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
         var created = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
         var saleId = created.GetProperty("data").GetProperty("id").GetString();
@@ -116,7 +116,7 @@ public class SalesApiTests : IClassFixture<SalesApiTests.ApiFactory>
         data.TryGetProperty("saleNumber", out _).Should().BeTrue("data must contain 'saleNumber' directly (no double-wrap)");
         data.TryGetProperty("data", out _).Should().BeFalse("response must NOT be double-wrapped");
 
-        // Verify discount: qty=4 → 10%
+        // Verify discount: qty=5 → 10% (rule: "above 4 identical items")
         var items = data.GetProperty("items");
         var widgetA = items.EnumerateArray().First(i => i.GetProperty("productName").GetString() == "Widget A");
         widgetA.GetProperty("discount").GetDecimal().Should().Be(0.10m);

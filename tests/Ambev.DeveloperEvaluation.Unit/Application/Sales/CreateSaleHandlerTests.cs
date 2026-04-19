@@ -38,10 +38,10 @@ public class CreateSaleHandlerTests
         await _repository.Received(1).CreateAsync(Arg.Any<Sale>(), Arg.Any<CancellationToken>());
     }
 
-    [Fact(DisplayName = "Given item with qty=4 When creating Then 10% discount is applied")]
+    [Fact(DisplayName = "Given item with qty=5 When creating Then 10% discount is applied")]
     public async Task Handle_ItemQty4_Applies10PercentDiscount()
     {
-        var command = CreateSaleHandlerTestData.ValidCommand(itemQuantity: 4);
+        var command = CreateSaleHandlerTestData.ValidCommand(itemQuantity: 5);
         Sale? capturedSale = null;
 
         _repository.CreateAsync(Arg.Any<Sale>(), Arg.Any<CancellationToken>())

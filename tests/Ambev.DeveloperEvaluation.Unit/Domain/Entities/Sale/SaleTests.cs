@@ -23,9 +23,9 @@ public class SaleTests
     [Fact(DisplayName = "Given items on Create Then TotalAmount is calculated with discount")]
     public void Create_WithItems_RecalculatesTotalAmount()
     {
-        // qty=4 → 10% discount → total = 4 * 10 * 0.90 = 36
+        // qty=4 → 0% discount (rule: "above 4") → total = 4 * 10 = 40
         var sale = SaleTestData.CreateSaleWithItem(4, 10m);
-        sale.TotalAmount.Should().Be(36m);
+        sale.TotalAmount.Should().Be(40m);
     }
 
     [Fact(DisplayName = "Given qty=10 on Create Then 20% discount applied")]
@@ -227,12 +227,12 @@ public class SaleTests
         var previousTotal = sale.TotalAmount; // 30
         sale.ClearDomainEvents();
 
-        // New item: qty=4, price=20 → 10% discount → total = 72
+        // New item: qty=5, price=20 → 10% discount → total = 5 * 20 * 0.90 = 90
         sale.UpdateFull(
             sale.CustomerId, sale.CustomerName,
             sale.BranchId, sale.BranchName,
             sale.SaleDate,
-            new[] { new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 4, 20m) });
+            new[] { new NewSaleItemSpec(Guid.NewGuid(), "NewItem", 5, 20m) });
 
         var evt = sale.DomainEvents.OfType<SaleModifiedEvent>().Single();
         evt.Previous.TotalAmount.Should().Be(previousTotal, "captures total before mutation");

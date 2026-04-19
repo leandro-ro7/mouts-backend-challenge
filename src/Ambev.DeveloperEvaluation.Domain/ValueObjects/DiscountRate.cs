@@ -24,9 +24,9 @@ public sealed class DiscountRate : IEquatable<DiscountRate>
 
     /// <summary>
     /// Returns the applicable discount rate for a given quantity.
-    /// Decision: "4+" in requirements summary prevails over "above 4" in narrative.
-    /// - qty 1-3:   0%  (below threshold — no discount)
-    /// - qty 4-9:  10%  (inclusive lower bound per summary)
+    /// Rule: "purchases above 4 identical items" → qty > 4 is the threshold for 10%.
+    /// - qty 1-4:   0%  (at or below threshold — no discount)
+    /// - qty 5-9:  10%  (strictly above 4)
     /// - qty 10-20: 20% (both bounds inclusive)
     /// - qty > 20: DomainException (business restriction)
     /// </summary>
